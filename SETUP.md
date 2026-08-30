@@ -155,3 +155,49 @@ The script sends through `GmailApp` with the alias in the `from` field, which Gm
 permits for a **verified alias**. If that alias is ever removed from the account, mail keeps
 sending but reverts to the account's own address, so leave it in place under
 **Gmail → Settings → Accounts → Send mail as**.
+
+---
+
+## 9. The registry page
+
+The registry lives at **natalie-eric.website/registry** as its own page
+(`registry/index.html`). The home page keeps a short teaser that links to it.
+
+Every gift is defined in the `REGISTRY` object at the top of that file's `<script>`:
+
+```js
+{ id:"pot", name:"A cast iron dutch oven", amount:150, art:"pot",
+  note:"For the slow Sunday cooking we keep promising ourselves.", url:"#" }
+```
+
+- `amount` — a number shows as `$150`; `null` shows as "Any amount" (the two funds).
+- `art` — which line illustration to use. The drawings live in the `ART` object just below.
+  Available: `plane house toast bed espresso pot knife plates linen crystal suitcase sun whisk`.
+- `url` — the Stripe Payment Link. Left as `"#"` the tile shows **Coming soon** rather than a
+  dead button, so it is always safe to publish before the links exist.
+
+`REGISTRY.funds` renders as two wide cards at the top; `REGISTRY.gifts` fills the grid below.
+
+### Wiring up Stripe
+
+For each gift, create a **Payment Link** in Stripe (Product → one-time price → Payment link).
+Two settings matter:
+
+- **Honeymoon Fund and Home Fund**: turn on *"Let customers choose what they pay"* so any
+  amount works.
+- **Every link**: set the confirmation page to
+  `https://natalie-eric.website/registry/?checkout=success`, which brings the guest back to the
+  registry and shows the thank-you note.
+
+Payment Links are reusable by design, so ten people can each buy the same $150 gift and it
+simply adds $150 ten times. Nothing sells out.
+
+### Pix
+
+The Pix panel at the bottom is a placeholder. Send the Pix key and the account holder's name
+and it becomes a proper panel with the key, a copy button and a QR code.
+
+### Shared stylesheet
+
+Both pages now load `/styles.css`. Editing a colour or a font there changes the whole site at
+once. It is the only file both pages depend on, so do not rename it.

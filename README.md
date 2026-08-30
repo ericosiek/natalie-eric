@@ -7,7 +7,9 @@ Hosted free on GitHub Pages at https://natalie-eric.website
 
 | File | What it is |
 |---|---|
-| `index.html` | The entire website. HTML, CSS and JavaScript in one file. |
+| `index.html` | The home page: invitation, welcome, schedule, RSVP, FAQ. |
+| `registry/index.html` | The registry page at /registry, with the gift tiles and illustrations. |
+| `styles.css` | The shared stylesheet for both pages. |
 | `CNAME` | Tells GitHub Pages to serve the site at natalie-eric.website. Do not delete. |
 | `rsvp-backend.gs` | The Google Apps Script that lives in the RSVP spreadsheet. Not used by the website directly; it is kept here as the source of truth. |
 

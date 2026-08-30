@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Registry &middot; Natalie &amp; Eric</title>
+<meta name="description" content="Our wedding registry. Contribute any amount toward the honeymoon, our home, or a gift from our wish list.">
+<meta name="theme-color" content="#FBF7F4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='68' font-family='Georgia,serif' font-size='58' fill='%239B5F57' text-anchor='middle'%3EN%26E%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="nav-in">
+    <a href="/" class="nav-mono mono" aria-label="Natalie and Eric, home">
+      <svg width="52" height="28" viewBox="0 0 120 64" aria-hidden="true">
+          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                font-size="46" font-weight="300" fill="#3A2E2B" letter-spacing="1">N<tspan
+                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+        </svg>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
+    <nav class="nav-links" id="navLinks">
+      <a href="/#welcome">Welcome</a>
+      <a href="/#schedule">Schedule</a>
+      <a href="/#rsvp">RSVP</a>
+      <a href="/#faq">FAQ</a>
+      <a href="/registry/" class="active">Registry</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="wrap">
+    <div class="sec-head rev">
+      <p class="eyebrow">With gratitude</p>
+      <h2>Registry</h2>
+      <div class="rule"><i></i></div>
+      <div class="reg-intro">
+        <p>We have set up a flexible registry where you can contribute any amount you wish toward
+           the items on our wish list. You can browse our registry below to give securely online
+           using a credit card.</p>
+        <p>If you would prefer to send a gift via e&#8209;transfer, you can send it directly to our email at
+           <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>.
+           We are also happy to accept cash or cheques.</p>
+      </div>
+    </div>
+
+    <div class="fund-row rev" id="funds"></div>
+    <div class="gift-tiles" id="gifts"></div>
+
+    <div class="pix rev" id="pix">
+      <div class="rule tight"><i></i></div>
+      <h3>Para nossa família no Brasil</h3>
+      <p>For our family in Brazil, we are setting up a Pix key so you can send a gift without the
+         card fees. It will appear here shortly.</p>
+      <span class="pix-key">Pix key coming soon</span>
+    </div>
+
+    <p class="center" style="margin-top:2.4rem;font-family:var(--sans);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)">
+      Card payments are processed securely by Stripe
+    </p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <span class="mono" aria-hidden="true">
+    <svg width="76" height="41" viewBox="0 0 120 64" aria-hidden="true">
+          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
+                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+        </svg>
+  </span>
+  <div class="rule tight"><i></i></div>
+  <p class="foot-meta">
+    Natalie &amp; Eric &middot; July 11, 2027<br>
+    Riverway Clubhouse &middot; Burnaby, BC<br>
+    <a class="foot-mail" href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>
+  </p>
+</footer>
+
+<script>
+/* ============================================================
+   REGISTRY  —  edit the items here.
+   `url` is the Stripe Payment Link. A tile left as "#" shows
+   "Coming soon" instead of a broken button.
+   ============================================================ */
+const REGISTRY = {
+  funds: [
+    { id:"honeymoon", name:"Honeymoon Fund", amount:null, art:"plane",
+      note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we'll remember.", url:"#" },
+    { id:"home", name:"Home Fund", amount:null, art:"house",
+      note:"Toward making our first place together feel like ours.", url:"#" }
+  ],
+  gifts: [
+    { id:"dinner",   name:"A romantic dinner for two", amount:250,  art:"toast",
+      note:"One unhurried evening on our honeymoon, just the two of us.", url:"#" },
+    { id:"night",    name:"A night somewhere beautiful", amount:500, art:"bed",
+      note:"One night of the trip, somewhere we would not book for ourselves.", url:"#" },
+    { id:"day",      name:"A whole day of the honeymoon", amount:1500, art:"sun",
+      note:"Breakfast to nightcap, entirely on you.", url:"#" },
+    { id:"weekend",  name:"A weekend away", amount:1000, art:"suitcase",
+      note:"Toward a proper trip once the wedding dust settles.", url:"#" },
+    { id:"espresso", name:"An espresso machine", amount:500, art:"espresso",
+      note:"The first thing we'll use every single morning.", url:"#" },
+    { id:"pot",      name:"A cast iron dutch oven", amount:150, art:"pot",
+      note:"For the slow Sunday cooking we keep promising ourselves.", url:"#" },
+    { id:"plates",   name:"Dinnerware for eight", amount:150, art:"plates",
+      note:"So we can finally host everyone properly.", url:"#" },
+    { id:"linen",    name:"Linen bedding", amount:150, art:"linen",
+      note:"The good sheets. The ones you notice.", url:"#" },
+    { id:"knife",    name:"A chef's knife", amount:100, art:"knife",
+      note:"One really good one, sharpened for years.", url:"#" },
+    { id:"glass",    name:"Crystal glassware", amount:100, art:"crystal",
+      note:"For toasting the anniversaries.", url:"#" },
+    { id:"kitchen",  name:"Something small for the kitchen", amount:50, art:"whisk",
+      note:"The little things that quietly make a kitchen work.", url:"#" }
+  ]
+};
+
+/* ============================================================
+   LINE ILLUSTRATIONS  —  drawn, not photographed, to match the
+   rest of the site. Rose for the object, champagne for detail.
+   ============================================================ */
+const R = '#9B5F57', C = '#C6A97A';
+const svg = inner =>
+  '<svg viewBox="0 0 100 76" fill="none" stroke="'+R+'" stroke-width="1.3" '+
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+inner+'</svg>';
+
+const ART = {
+  plane: svg(
+    '<path d="M14 56 C 20 52, 26 50, 32 48" stroke="'+C+'" stroke-width="1" stroke-dasharray="2 4"/>'+
+    '<path d="M22 42 L80 18 L62 62 L50 46 Z"/>'+
+    '<path d="M50 46 L80 18"/>'+
+    '<path d="M50 46 L43 61 L53 57"/>'),
+
+  house: svg(
+    '<path d="M20 40 L50 18 L80 40"/>'+
+    '<path d="M28 37 V62 H72 V37"/>'+
+    '<path d="M43 62 V48 H57 V62"/>'+
+    '<path d="M64 26 V20 H70 V31" stroke="'+C+'"/>'+
+    '<path d="M16 62 H84" stroke="'+C+'"/>'),
+
+  toast: svg(
+    '<path d="M26 20 H46 L44 33 A8 8 0 0 1 28 33 Z"/>'+
+    '<path d="M36 41 V56"/><path d="M29 58 H43"/>'+
+    '<path d="M54 20 H74 L72 33 A8 8 0 0 1 56 33 Z"/>'+
+    '<path d="M64 41 V56"/><path d="M57 58 H71"/>'+
+    '<path d="M47 25 H53" stroke="'+C+'" stroke-dasharray="1.5 3"/>'),
+
+  bed: svg(
+    '<path d="M14 58 V40 A6 6 0 0 1 20 34 H80 A6 6 0 0 1 86 40 V58"/>'+
+    '<path d="M10 58 H90"/>'+
+    '<path d="M18 58 V65"/><path d="M82 58 V65"/>'+
+    '<path d="M26 34 V28 A4 4 0 0 1 30 24 H70 A4 4 0 0 1 74 28 V34" stroke="'+C+'"/>'+
+    '<path d="M50 24 V34" stroke="'+C+'"/>'),
+
+  espresso: svg(
+    '<path d="M26 8 H74 V64 H62 V44 H38 V64 H26 Z"/>'+
+    '<circle cx="40" cy="24" r="6" stroke="'+C+'"/>'+
+    '<circle cx="59" cy="20" r="2.5" stroke="'+C+'"/>'+
+    '<circle cx="59" cy="29" r="2.5" stroke="'+C+'"/>'+
+    '<path d="M44 44 H56 V49 H44 Z"/>'+
+    '<path d="M46 49 L47.5 53 H52.5 L54 49"/>'+
+    '<path d="M44 56 H56 V61 A3 3 0 0 1 53 64 H47 A3 3 0 0 1 44 61 Z"/>'+
+    '<path d="M56 57.5 A4 4 0 0 1 56 63" stroke="'+C+'"/>'+
+    '<path d="M20 66 H80"/>'),
+
+  pot: svg(
+    '<path d="M24 34 H76 L72 60 A6 6 0 0 1 66 65 H34 A6 6 0 0 1 28 60 Z"/>'+
+    '<path d="M18 34 H82"/>'+
+    '<path d="M32 34 A20 9 0 0 1 68 34" stroke="'+C+'"/>'+
+    '<path d="M50 25 V21"/><circle cx="50" cy="18" r="3"/>'),
+
+  knife: svg(
+    '<path d="M12 48 L68 26 L68 36 C 48 38, 28 43, 12 48 Z"/>'+
+    '<path d="M68 26 V36"/>'+
+    '<path d="M68 27 H84 A3 3 0 0 1 87 30 V33 A3 3 0 0 1 84 36 H68 Z" stroke="'+C+'"/>'+
+    '<path d="M73 31.5 H82" stroke="'+C+'"/>'),
+
+  plates: svg(
+    '<ellipse cx="50" cy="22" rx="27" ry="8"/>'+
+    '<ellipse cx="50" cy="22" rx="14" ry="4.2" stroke="'+C+'"/>'+
+    '<path d="M23 24 v4 c0 4.4 12.1 8 27 8 s27-3.6 27-8 v-4"/>'+
+    '<path d="M23 37 v4 c0 4.4 12.1 8 27 8 s27-3.6 27-8 v-4"/>'+
+    '<path d="M23 50 v4 c0 4.4 12.1 8 27 8 s27-3.6 27-8 v-4"/>'),
+
+  linen: svg(
+    '<path d="M27 28 H73 A6 6 0 0 1 73 40 H27 A6 6 0 0 1 27 28 Z"/>'+
+    '<path d="M27 44 H73 A6 6 0 0 1 73 56 H27 A6 6 0 0 1 27 44 Z"/>'+
+    '<path d="M34 34 H66" stroke="'+C+'" stroke-dasharray="2 3"/>'+
+    '<path d="M34 50 H66" stroke="'+C+'" stroke-dasharray="2 3"/>'),
+
+  crystal: svg(
+    '<path d="M28 14 H44 L42 38 A5 5 0 0 1 30 38 Z"/>'+
+    '<path d="M36 43 V58"/><path d="M29 60 H43"/>'+
+    '<path d="M56 30 H76 L73 58 A3 3 0 0 1 70 60 H62 A3 3 0 0 1 59 58 Z"/>'+
+    '<path d="M58 40 H74" stroke="'+C+'" stroke-dasharray="2 3"/>'),
+
+  suitcase: svg(
+    '<path d="M18 32 H82 A4 4 0 0 1 86 36 V60 A4 4 0 0 1 82 64 H18 A4 4 0 0 1 14 60 V36 A4 4 0 0 1 18 32 Z"/>'+
+    '<path d="M40 32 V26 A4 4 0 0 1 44 22 H56 A4 4 0 0 1 60 26 V32"/>'+
+    '<path d="M14 44 H86" stroke="'+C+'"/>'+
+    '<path d="M45 39 H55 V49 H45 Z"/>'+
+    '<path d="M24 64 V69"/><path d="M76 64 V69"/>'),
+
+  sun: svg(
+    '<circle cx="50" cy="34" r="13"/>'+
+    '<path d="M50 12 V17"/><path d="M26 34 H31"/><path d="M69 34 H74"/>'+
+    '<path d="M33 17 L36.5 20.5"/><path d="M67 17 L63.5 20.5"/>'+
+    '<path d="M33 51 L36.5 47.5"/><path d="M67 51 L63.5 47.5"/>'+
+    '<path d="M12 60 H88" stroke="'+C+'"/>'),
+
+  whisk: svg(
+    '<path d="M50 54 C 32 48, 30 24, 50 14"/>'+
+    '<path d="M50 54 C 68 48, 70 24, 50 14"/>'+
+    '<path d="M50 54 C 41 49, 40 25, 50 14" stroke="'+C+'"/>'+
+    '<path d="M50 54 C 59 49, 60 25, 50 14" stroke="'+C+'"/>'+
+    '<path d="M45 54 H55 V60 H45 Z"/>'+
+    '<path d="M46 60 H54 V70 A4 4 0 0 1 46 70 Z"/>')
+};
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => (
+  {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function tile(g, isFund){
+  const live = g.url && g.url !== "#";
+  const amt  = g.amount ? "$"+g.amount.toLocaleString() : "Any amount";
+  return `<article class="tile${isFund?" fund":""} rev">
+    <div class="tile-art">${ART[g.art] || ""}</div>
+    <div class="tile-body">
+      <div class="tile-amt">${amt}</div>
+      <h3 class="tile-name">${esc(g.name)}</h3>
+      <p class="tile-note">${esc(g.note)}</p>
+      ${live
+        ? `<a class="btn ${isFund?"":"ghost"} sm" href="${esc(g.url)}">Contribute</a>`
+        : `<button class="btn ghost sm" disabled>Coming soon</button>`}
+    </div>
+  </article>`;
+}
+
+document.getElementById('funds').innerHTML = REGISTRY.funds.map(g=>tile(g,true)).join("");
+document.getElementById('gifts').innerHTML = REGISTRY.gifts.map(g=>tile(g,false)).join("");
+
+/* ---------- nav ---------- */
+const nav = document.getElementById('nav'), links = document.getElementById('navLinks'),
+      toggle = document.getElementById('navToggle');
+toggle.addEventListener('click', ()=>{
+  const open = toggle.getAttribute('aria-expanded')==='true';
+  toggle.setAttribute('aria-expanded', String(!open));
+  links.classList.toggle('open', !open);
+});
+const onScroll = ()=> nav.classList.toggle('stuck', window.scrollY > 12);
+onScroll(); window.addEventListener('scroll', onScroll, {passive:true});
+
+/* ---------- reveal ---------- */
+if("IntersectionObserver" in window){
+  const io = new IntersectionObserver((es,obs)=>{
+    es.forEach((en,i)=>{
+      if(!en.isIntersecting) return;
+      setTimeout(()=> en.target.classList.add('in'), Math.min(i*60,320));
+      obs.unobserve(en.target);
+    });
+  },{rootMargin:"0px 0px -8% 0px", threshold:.06});
+  document.querySelectorAll('.rev').forEach(e=> io.observe(e));
+} else {
+  document.querySelectorAll('.rev').forEach(e=> e.classList.add('in'));
+}
+
+/* ---------- thank you, after a Stripe checkout returns here ---------- */
+if(new URLSearchParams(location.search).get('checkout') === 'success'){
+  const d = document.createElement('div');
+  d.className = 'dlg';
+  d.setAttribute('role','dialog');
+  d.setAttribute('aria-modal','true');
+  d.innerHTML =
+    '<div class="dlg-card">'+
+      '<div class="rule tight"><i></i></div>'+
+      '<h3>Thank you</h3>'+
+      '<p>Your gift means so much to us. We are so grateful, and we cannot wait to celebrate with you.</p>'+
+      '<button class="btn sm" id="dlgClose">Close</button>'+
+    '</div>';
+  document.body.appendChild(d);
+  document.body.style.overflow = 'hidden';
+  const close = ()=>{
+    d.remove();
+    document.body.style.overflow = '';
+    const u = new URL(location.href); u.searchParams.delete('checkout');
+    history.replaceState({}, '', u);
+  };
+  document.getElementById('dlgClose').addEventListener('click', close);
+  d.addEventListener('click', e=>{ if(e.target === d) close(); });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape') close(); });
+}
+</script>
+</body>
+</html>
