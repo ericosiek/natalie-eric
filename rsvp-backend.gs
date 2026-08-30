@@ -168,7 +168,7 @@ function saveRsvp(body){
 
 function notify(party, body){
   if(String(cfg('Notify On RSVP', 'TRUE')).toUpperCase() !== 'TRUE') return;
-  var to = String(cfg('Notify Email','') || Session.getEffectiveUser().getEmail());
+  var to = String(cfg('Notify Email','') || sendAsAddress() || Session.getEffectiveUser().getEmail());
   if(!to) return;
   var yes = party.guests.filter(function(g){ return g.attending === 'yes'; });
   var lines = party.guests.map(function(g){
@@ -177,17 +177,37 @@ function notify(party, body){
         (g.diet ? ' [' + g.diet + ']' : '')
        : g.attending === 'no' ? 'Not attending' : 'No reply');
   }).join('\n');
-  MailApp.sendEmail({
-    to: to,
-    subject: 'RSVP: ' + party.label + ' (' + yes.length + ' attending)',
-    body: party.label + ' just replied.\n\n' + lines +
-          (body.note ? '\n\nTheir note:\n' + body.note : '') +
-          (body.email ? '\n\nContact: ' + body.email : '') +
-          '\n\nParty ' + party.partyId + '\n' + SpreadsheetApp.getActive().getUrl()
-  });
+  GmailApp.sendEmail(to,
+    'RSVP: ' + party.label + ' (' + yes.length + ' attending)',
+    party.label + ' just replied.\n\n' + lines +
+      (body.note ? '\n\nTheir note:\n' + body.note : '') +
+      (body.email ? '\n\nContact: ' + body.email : '') +
+      '\n\nParty ' + party.partyId + '\n' + SpreadsheetApp.getActive().getUrl(),
+    mailOptions());
 }
 
 /* ========================== helpers ====================================== */
+
+function sendAsAddress(){
+  return String(cfg('Send As','natalie.eric.2027@gmail.com')).trim();
+}
+/* Returns the Send As address only if it is a verified Gmail alias on this
+   account, so a typo can never silently stop the mail going out. */
+function sendAs(){
+  var want = sendAsAddress();
+  if(!want) return '';
+  try{
+    var a = GmailApp.getAliases();
+    for(var i=0;i<a.length;i++){ if(a[i].toLowerCase() === want.toLowerCase()) return a[i]; }
+  }catch(e){}
+  return '';
+}
+function mailOptions(){
+  var o = { name: 'Natalie & Eric', replyTo: sendAsAddress() };
+  var alias = sendAs();
+  if(alias) o.from = alias;
+  return o;
+}
 
 function ss(){ return SpreadsheetApp.getActiveSpreadsheet(); }
 function sheet(n){
@@ -277,7 +297,6 @@ function setup(){
   p.setColumnWidth(7,75);  p.setColumnWidth(8,85);  p.setColumnWidth(9,200);
   p.setColumnWidth(10,260);p.setColumnWidth(11,150);p.setColumnWidth(12,110);
   p.setFrozenRows(1);
-  p.getRange('C2:C1000').insertCheckboxes();
   p.getRange('C2:C1000').setHorizontalAlignment('center');
 
   /* ---- Config ---- */
@@ -316,6 +335,44 @@ function styleHeader(sh, cols){
    refreshParties()  -  makes a Parties row + unique link for every party
    number that appears in Guests. Re-runnable. Never rewrites a live token.
    ========================================================================== */
+function firstFreeRow(p){
+  var n = Math.max(p.getMaxRows() - 1, 1);
+  var col = p.getRange(2,1,n,1).getValues();
+  for(var i=0;i<col.length;i++){ if(String(col[i][0]).trim() === '') return i+2; }
+  return n + 2;
+}
+
+/* Tidies the Parties tab: pulls every party up so they start at row 2 and
+   removes stray checkboxes on empty rows. Keeps each party's link code. */
+function repairParties(){
+  var p = sheet(SHEET_PARTIES);
+  var n = p.getMaxRows() - 1;
+  if(n < 1) return;
+  var all = p.getRange(2,1,n,12).getValues();
+  var keep = [];
+  for(var i=0;i<all.length;i++){
+    if(String(all[i][0]).trim() !== '') keep.push(all[i]);
+  }
+  p.getRange(2,1,n,12).clearContent();
+  p.getRange(2,3,n,1).clearDataValidations();
+  for(var j=0;j<keep.length;j++){
+    var r = j + 2, k = keep[j];
+    p.getRange(r,1).setNumberFormat('@');
+    p.getRange(r,1).setValue(pad(k[0]));
+    p.getRange(r,2).setValue(k[1]);
+    p.getRange(r,3).insertCheckboxes();
+    p.getRange(r,3).setValue(k[2] === true || String(k[2]).toUpperCase() === 'TRUE');
+    p.getRange(r,4).setValue(k[3]);
+    p.getRange(r,9).setValue(k[8]);
+    p.getRange(r,10).setValue(k[9]);
+    p.getRange(r,11).setValue(k[10]);
+    p.getRange(r,12).setValue(k[11]);
+  }
+  SpreadsheetApp.flush();
+  refreshParties();
+  ss().toast(keep.length + ' parties now start at row 2.','Tidied',6);
+}
+
 function refreshParties(){
   var g  = sheet(SHEET_GUESTS), p = sheet(SHEET_PARTIES);
   var gv = g.getDataRange().getValues();
@@ -353,7 +410,7 @@ function refreshParties(){
   order.forEach(function(id){
     var row = rowOf[id];
     if(!row){
-      row = p.getLastRow() + 1;
+      row = firstFreeRow(p);
       var names = Object.keys(surnames[id]);
       var label = names.length === 1 ? ('The ' + names[0] + ' Family')
                 : names.length  >  1 ? names.join(' & ')
@@ -437,10 +494,8 @@ function sendInvites(){
     if(!emails.length || !link || pv[r][P.SENT]){ skipped++; continue; }
     var label = String(pv[r][P.NAME]||'Friends');
 
-    MailApp.sendEmail({
-      to: emails.join(','),
-      subject: "You're invited to Natalie & Eric's wedding",
-      htmlBody:
+    var opts = mailOptions();
+    opts.htmlBody =
         '<div style="font-family:Georgia,serif;color:#3A2E2B;max-width:520px;margin:0 auto;padding:28px;'+
         'background:#FCF8F4;border:1px solid #E3D2B4;text-align:center">'+
           '<div style="font-size:13px;letter-spacing:4px;color:#9B5F57;text-transform:uppercase">Together with their families</div>'+
@@ -454,9 +509,9 @@ function sendInvites(){
           'padding:14px 30px;text-decoration:none;letter-spacing:3px;font-size:12px;'+
           'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">Open your invitation</a></p>'+
           '<p style="font-size:12px;color:#A2908A;word-break:break-all;margin-top:20px">' + link + '</p>'+
-        '</div>',
-      name: 'Natalie & Eric'
-    });
+        '</div>';
+    GmailApp.sendEmail(emails.join(','), "You're invited to Natalie & Eric's wedding",
+      'You are invited to the wedding of Natalie & Eric on Sunday, July 11, 2027 at Riverway Clubhouse, Burnaby BC.\n\nYour invitation and RSVP link: ' + link, opts);
     p.getRange(r+1, P.SENT+1).setValue(new Date());
     sent++;
     Utilities.sleep(400);
@@ -485,6 +540,7 @@ function onOpen(){
   SpreadsheetApp.getUi().createMenu('Wedding')
     .addItem('Refresh parties & links','refreshParties')
     .addItem('Build invite text (WhatsApp / iMessage)','buildShareText')
+    .addItem('Tidy the Parties tab','repairParties')
     .addSeparator()
     .addItem('Email invites to new parties','sendInvites')
     .addSeparator()

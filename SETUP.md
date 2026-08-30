@@ -124,8 +124,9 @@ Existing parties and their links are never disturbed.
 | RSVP Deadline | Blank shows "at your earliest convenience". Otherwise `yyyy-mm-dd`. |
 | Meal Options | Comma separated. Changes the dropdown on the site. |
 | Site URL | Used to build the invite links. |
-| Notify Email | Where RSVP alerts go. Blank uses the sheet owner. |
+| Notify Email | Where RSVP alerts go. Blank falls back to Send As. |
 | Notify On RSVP | FALSE stops the alert emails. |
+| Send As | The Gmail alias every email goes out from: `natalie.eric.2027@gmail.com`. It must stay a verified alias on the account, otherwise mail silently falls back to the account's own address. |
 
 ---
 
@@ -138,3 +139,19 @@ customer-chooses-the-amount option.
 Links live in the `CONFIG.registry` array in `index.html`. Replace each `"#"` with
 the Payment Link URL and push; a tile with `"#"` shows as "Coming soon" rather
 than breaking.
+
+---
+
+## 8. Email identity
+
+Everything the site and the script send uses **natalie.eric.2027@gmail.com**, not Eric's
+personal address:
+
+- the mailto links on the site (RSVP help, FAQ, registry e-transfer, footer)
+- the invitation emails from **Wedding → Email invites to new parties**
+- the RSVP notification that lands when a guest replies
+
+The script sends through `GmailApp` with the alias in the `from` field, which Gmail only
+permits for a **verified alias**. If that alias is ever removed from the account, mail keeps
+sending but reverts to the account's own address, so leave it in place under
+**Gmail → Settings → Accounts → Send mail as**.

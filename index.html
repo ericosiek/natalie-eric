@@ -130,7 +130,7 @@ p:last-child{margin-bottom:0}
 }
 @keyframes riseIn{from{opacity:0;transform:translateY(26px) scale(.985)}to{opacity:1;transform:none}}
 .seal{
-  width:96px;height:96px;border-radius:50%;margin:0 auto 1.6rem;
+  width:98px;height:98px;border-radius:50%;margin:0 auto 1.6rem;
   display:flex;align-items:center;justify-content:center;
   background:linear-gradient(145deg,#F6E7DF,#EBD3C8);
   border:1px solid rgba(198,169,122,.55);
@@ -140,9 +140,9 @@ p:last-child{margin-bottom:0}
 .invite-amp{display:block;font-style:italic;color:var(--champagne);font-size:.5em;margin:.16em 0;font-weight:300}
 .invite-meta{
   font-family:var(--sans);font-size:.68rem;letter-spacing:.3em;text-transform:uppercase;
-  color:var(--ink-soft);margin:1.5rem 0 .5rem;line-height:2.1;
+  color:var(--ink-soft);margin:1.3rem 0 0;line-height:2.1;
 }
-.invite-greet{color:var(--ink-soft);font-size:1.06rem;font-style:italic;margin:1.35rem 0 0}
+.invite-greet{color:var(--ink-soft);font-size:1.08rem;font-style:italic;margin:.7rem 0 0;line-height:1.5}
 
 /* ============================================================
    NAV
@@ -427,23 +427,22 @@ footer{
   <div class="card-invite">
     <div class="seal">
       <span class="mono" aria-hidden="true">
-        <svg width="56" height="42" viewBox="0 0 56 42">
-          <text x="4"  y="32" font-family="Cormorant Garamond,Georgia,serif" font-size="34" font-weight="300" fill="#9B5F57">N</text>
-          <text x="24" y="32" font-family="Cormorant Garamond,Georgia,serif" font-size="26" font-style="italic" fill="#C6A97A">&amp;</text>
-          <text x="37" y="32" font-family="Cormorant Garamond,Georgia,serif" font-size="34" font-weight="300" fill="#9B5F57">E</text>
+        <svg width="64" height="34" viewBox="0 0 120 64" aria-hidden="true">
+          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
+                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
         </svg>
       </span>
     </div>
 
     <p class="eyebrow">Together with their families</p>
     <h1 class="invite-names">Natalie<span class="invite-amp">&amp;</span>Eric</h1>
+    <p class="invite-greet" id="inviteGreet">request the pleasure of your company</p>
     <div class="rule tight"><i></i></div>
     <p class="invite-meta">
-      Sunday, the eleventh of July<br>
-      Two thousand twenty&#8209;seven<br>
+      Sunday, July 11th 2027<br>
       Riverway Clubhouse &middot; Burnaby, BC
     </p>
-    <p class="invite-greet" id="inviteGreet">request the pleasure of your company</p>
     <p style="margin-top:2.1rem"><button class="btn" id="openInvite">Open Invitation</button></p>
   </div>
 </div>
@@ -454,19 +453,19 @@ footer{
 <header class="nav" id="nav">
   <div class="nav-in">
     <a href="#welcome" class="nav-mono mono" aria-label="Natalie and Eric, home">
-      <svg width="62" height="26" viewBox="0 0 62 26" aria-hidden="true">
-        <text x="0"  y="20" font-family="Cormorant Garamond,Georgia,serif" font-size="22" font-weight="300" fill="#3A2E2B">N</text>
-        <text x="18" y="20" font-family="Cormorant Garamond,Georgia,serif" font-size="17" font-style="italic" fill="#C6A97A">&amp;</text>
-        <text x="30" y="20" font-family="Cormorant Garamond,Georgia,serif" font-size="22" font-weight="300" fill="#3A2E2B">E</text>
-      </svg>
+      <svg width="52" height="28" viewBox="0 0 120 64" aria-hidden="true">
+          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                font-size="46" font-weight="300" fill="#3A2E2B" letter-spacing="1">N<tspan
+                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+        </svg>
     </a>
     <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
     <nav class="nav-links" id="navLinks">
       <a href="#welcome">Welcome</a>
       <a href="#schedule">Schedule</a>
       <a href="#rsvp">RSVP</a>
-      <a href="#registry">Registry</a>
       <a href="#faq">FAQ</a>
+      <a href="#registry">Registry</a>
     </nav>
   </div>
 </header>
@@ -542,9 +541,26 @@ footer{
 </section>
 
 <!-- ==========================================================
+     FAQ
+     ========================================================== -->
+<section id="faq">
+  <div class="wrap narrow">
+    <div class="sec-head rev">
+      <p class="eyebrow">Good to know</p>
+      <h2>Questions</h2>
+      <div class="rule"><i></i></div>
+    </div>
+    <div class="faq rev" id="faqList"></div>
+    <p class="center" style="margin-top:2.6rem;color:var(--ink-soft)">
+      Still have a question? Email us at
+      <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>.
+    </p>
+  </div>
+</section>
+<!-- ==========================================================
      REGISTRY
      ========================================================== -->
-<section id="registry">
+<section class="alt" id="registry">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">With gratitude</p>
@@ -568,32 +584,15 @@ footer{
   </div>
 </section>
 
-<!-- ==========================================================
-     FAQ
-     ========================================================== -->
-<section class="alt" id="faq">
-  <div class="wrap narrow">
-    <div class="sec-head rev">
-      <p class="eyebrow">Good to know</p>
-      <h2>Questions</h2>
-      <div class="rule"><i></i></div>
-    </div>
-    <div class="faq rev" id="faqList"></div>
-    <p class="center" style="margin-top:2.6rem;color:var(--ink-soft)">
-      Still have a question? Email us at
-      <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>.
-    </p>
-  </div>
-</section>
 </main>
 
 <footer>
   <span class="mono" aria-hidden="true">
-    <svg width="74" height="32" viewBox="0 0 74 32">
-      <text x="2"  y="25" font-family="Cormorant Garamond,Georgia,serif" font-size="27" font-weight="300" fill="#9B5F57">N</text>
-      <text x="24" y="25" font-family="Cormorant Garamond,Georgia,serif" font-size="21" font-style="italic" fill="#C6A97A">&amp;</text>
-      <text x="40" y="25" font-family="Cormorant Garamond,Georgia,serif" font-size="27" font-weight="300" fill="#9B5F57">E</text>
-    </svg>
+    <svg width="76" height="41" viewBox="0 0 120 64" aria-hidden="true">
+          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
+                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+        </svg>
   </span>
   <div class="rule tight"><i></i></div>
   <p class="foot-meta">
@@ -1194,7 +1193,7 @@ function initNav(){
   onScroll(); window.addEventListener("scroll", onScroll, {passive:true});
 
   // scrollspy
-  const secs = ["welcome","schedule","rsvp","registry","faq"]
+  const secs = ["welcome","schedule","rsvp","faq","registry"]
     .map(id=>({id, el:document.getElementById(id)})).filter(s=>s.el);
   const spy = new IntersectionObserver(entries=>{
     entries.forEach(en=>{
