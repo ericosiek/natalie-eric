@@ -54,14 +54,6 @@
     <div class="fund-row rev" id="funds"></div>
     <div class="gift-tiles" id="gifts"></div>
 
-    <div class="pix rev" id="pix">
-      <div class="rule tight"><i></i></div>
-      <h3>Para nossa família no Brasil</h3>
-      <p>For our family in Brazil, we are setting up a Pix key so you can send a gift without the
-         card fees. It will appear here shortly.</p>
-      <span class="pix-key">Pix key coming soon</span>
-    </div>
-
     <p class="center" style="margin-top:2.4rem;font-family:var(--sans);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)">
       Card payments are processed securely by Stripe
     </p>
@@ -94,33 +86,23 @@
 const REGISTRY = {
   funds: [
     { id:"honeymoon", name:"Honeymoon Fund", amount:null, art:"plane",
-      note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we'll remember.", url:"#" },
-    { id:"home", name:"Home Fund", amount:null, art:"house",
-      note:"Toward making our first place together feel like ours.", url:"#" }
+      note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we'll remember.", url:"https://buy.stripe.com/9B68wQbgs2uO8qK77e1sQ00" }
   ],
   gifts: [
-    { id:"dinner",   name:"A romantic dinner for two", amount:250,  art:"toast",
-      note:"One unhurried evening on our honeymoon, just the two of us.", url:"#" },
-    { id:"night",    name:"A night somewhere beautiful", amount:500, art:"bed",
-      note:"One night of the trip, somewhere we would not book for ourselves.", url:"#" },
-    { id:"day",      name:"A whole day of the honeymoon", amount:1500, art:"sun",
-      note:"Breakfast to nightcap, entirely on you.", url:"#" },
-    { id:"weekend",  name:"A weekend away", amount:1000, art:"suitcase",
-      note:"Toward a proper trip once the wedding dust settles.", url:"#" },
-    { id:"espresso", name:"An espresso machine", amount:500, art:"espresso",
-      note:"The first thing we'll use every single morning.", url:"#" },
-    { id:"pot",      name:"A cast iron dutch oven", amount:150, art:"pot",
-      note:"For the slow Sunday cooking we keep promising ourselves.", url:"#" },
-    { id:"plates",   name:"Dinnerware for eight", amount:150, art:"plates",
-      note:"So we can finally host everyone properly.", url:"#" },
-    { id:"linen",    name:"Linen bedding", amount:150, art:"linen",
-      note:"The good sheets. The ones you notice.", url:"#" },
-    { id:"knife",    name:"A chef's knife", amount:100, art:"knife",
-      note:"One really good one, sharpened for years.", url:"#" },
-    { id:"glass",    name:"Crystal glassware", amount:100, art:"crystal",
-      note:"For toasting the anniversaries.", url:"#" },
     { id:"kitchen",  name:"Something small for the kitchen", amount:50, art:"whisk",
-      note:"The little things that quietly make a kitchen work.", url:"#" }
+      note:"The little things that quietly make a kitchen work.", url:"https://buy.stripe.com/aFa7sM98k5H022m2QY1sQ01" },
+    { id:"knife",    name:"A chef's knife", amount:100, art:"knife",
+      note:"One really good one, sharpened for years.", url:"https://buy.stripe.com/eVqbJ2aco8TcbCWdvC1sQ02" },
+    { id:"pot",      name:"A cast iron dutch oven", amount:150, art:"pot",
+      note:"For the slow Sunday cooking we keep promising ourselves.", url:"https://buy.stripe.com/eVq14o84gd9sfTc1MU1sQ03" },
+    { id:"dinner",   name:"A romantic dinner for two", amount:250, art:"toast",
+      note:"One unhurried evening on our honeymoon, just the two of us.", url:"https://buy.stripe.com/00w3cw5W8edw0Yicry1sQ04" },
+    { id:"espresso", name:"An espresso machine", amount:500, art:"espresso",
+      note:"The first thing we'll use every single morning.", url:"https://buy.stripe.com/00w28s70cd9s6iCfDK1sQ05" },
+    { id:"weekend",  name:"A weekend away", amount:1000, art:"suitcase",
+      note:"Toward a proper trip once the wedding dust settles.", url:"https://buy.stripe.com/6oU9AU84gb1kcH02QY1sQ06" },
+    { id:"day",      name:"A whole day of the honeymoon", amount:1500, art:"sun",
+      note:"Breakfast to nightcap, entirely on you.", url:"https://buy.stripe.com/14A6oIaco4CWayS2QY1sQ07" }
   ]
 };
 

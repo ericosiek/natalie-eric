@@ -407,8 +407,7 @@ footer{
 .reg-intro{max-width:640px;margin:0 auto;text-align:center}
 .reg-intro p{color:var(--ink-soft);font-size:1.08rem}
 
-.fund-row{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;margin:0 0 1.1rem}
-@media (max-width:760px){.fund-row{grid-template-columns:1fr}}
+.fund-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.1rem;margin:0 0 1.1rem}
 
 .tile{
   background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
@@ -432,23 +431,18 @@ footer{
 .tile-note{font-size:.98rem;color:var(--ink-soft);line-height:1.55;flex:1}
 .tile .btn{margin-top:.9rem}
 
-.fund{grid-column:span 1}
-.fund .tile-art{aspect-ratio:16/7;background:linear-gradient(160deg,#FCF6F2,#EFDDD4)}
-.fund .tile-name{font-size:1.6rem}
+.fund .tile-art{aspect-ratio:16/8;background:linear-gradient(160deg,#FCF6F2,#EFDDD4)}
+.fund .tile-name{font-size:1.75rem}
+@media (min-width:760px){
+  .fund{flex-direction:row}
+  .fund .tile-art{width:40%;flex:none;aspect-ratio:auto;border-bottom:0;border-right:1px solid var(--line-soft)}
+  .fund .tile-art svg{max-width:190px}
+  .fund .tile-body{text-align:left;justify-content:center;padding:2.6rem 2.8rem;gap:.55rem}
+  .fund .tile-note{flex:none;max-width:46ch}
+  .fund .btn{align-self:flex-start;margin-top:1.3rem}
+}
 
 .gift-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:1.1rem}
-
-.pix{
-  margin-top:clamp(3rem,7vw,4.5rem);background:var(--surface);border:1px solid var(--line);
-  box-shadow:var(--shadow);padding:clamp(1.8rem,5vw,2.8rem);text-align:center;
-}
-.pix h3{margin-bottom:.5rem}
-.pix p{color:var(--ink-soft);max-width:52ch;margin-inline:auto}
-.pix-key{
-  display:inline-flex;align-items:center;gap:.75rem;margin-top:1.2rem;
-  font-family:var(--sans);font-size:.86rem;letter-spacing:.1em;
-  background:var(--ground);border:1px dashed var(--champagne-soft);padding:.85rem 1.3rem;color:var(--ink-soft);
-}
 
 /* thank-you dialog after checkout */
 .dlg{
