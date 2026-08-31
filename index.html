@@ -980,6 +980,9 @@ const INV = {
     const scene = document.querySelector(".env-scene");
     const card  = document.querySelector(".env-letter .card-invite");
     if(!st || !scene || !card || st.dataset.state !== "sealed") return;
+    /* a hidden tab reports no viewport at all; wait until there is one to
+       measure against, or the fit would be nonsense */
+    if(!window.innerHeight) return;
     const shell  = document.querySelector(".env-shell");
     const sceneH = shell ? shell.getBoundingClientRect().height
                          : scene.getBoundingClientRect().height;
@@ -1065,6 +1068,7 @@ function initInvitation(){
   /* fonts change the card's height, so measure again once they have landed */
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> INV.fitSealed());
   window.addEventListener("resize", ()=> INV.fitSealed(), {passive:true});
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) INV.fitSealed(); });
   setTimeout(()=>{ INV.fitSealed(); btn.focus(); }, 900);
 }
 
