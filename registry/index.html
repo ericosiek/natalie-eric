@@ -25,8 +25,8 @@
     </a>
     <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
     <nav class="nav-links" id="navLinks">
-      <a href="/">Invitation</a>
       <a href="/#welcome">Welcome</a>
+      <a href="/#venue">The Venue</a>
       <a href="/#schedule">Schedule</a>
       <a href="/#rsvp">RSVP</a>
       <a href="/#faq">FAQ</a>
@@ -86,9 +86,9 @@
    ============================================================ */
 const REGISTRY = {
   funds: [
-    { id:"honeymoon", name:"Honeymoon Fund", art:"sun",
+    { id:"honeymoon", name:"Honeymoon Fund", art:"balloon",
       note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we will remember.",
-      url:"https://buy.stripe.com/9B68wQbgs2uO8qK77e1sQ00" }
+      url:"https://buy.stripe.com/fZu28s5W8glE36qfDK1sQ0f" }
   ],
   gifts: [
     { id:"dinner", name:"Romantic Dinner For Two", art:"toast",
@@ -200,6 +200,13 @@ const ART = {
     '<path d="M14 44 H86" stroke="'+C+'"/>'+
     '<path d="M45 39 H55 V49 H45 Z"/>'+
     '<path d="M24 64 V69"/><path d="M76 64 V69"/>'),
+
+  /* a heart-shaped hot air balloon: love and the journey in one mark */
+  balloon: svg(
+    '<path d="M50 46 C 50 46, 29 33, 29 21 C 29 13.5, 34.5 9, 40.5 9 C 45 9, 48 12, 50 15.5 C 52 12, 55 9, 59.5 9 C 65.5 9, 71 13.5, 71 21 C 71 33, 50 46, 50 46 Z"/>'+
+    '<path d="M41 41 L45 55" stroke="'+C+'"/>'+
+    '<path d="M59 41 L55 55" stroke="'+C+'"/>'+
+    '<path d="M44.5 55 h11 l-1.4 8 h-8.2 Z" stroke="'+C+'"/>'),
 
   sun: svg(
     '<circle cx="50" cy="34" r="13"/>'+
