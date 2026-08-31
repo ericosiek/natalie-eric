@@ -282,6 +282,7 @@ function siteContent(){
     schedule: schedule,
     faq:      faq,
     meals:    meals,
+    deadline: ymd(cfg('RSVP Deadline','')),
     venue:    String(cfg('Venue','Riverway Clubhouse')),
     address:  String(cfg('Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3')),
     email:    sendAsAddress()
@@ -565,7 +566,10 @@ function adminSaveGuest(b){
   var name = (String(g.first||'').trim()+' '+String(g.last||'').trim()).trim();
   var attending = g.attending === 'yes' ? 'Yes' : g.attending === 'no' ? 'No' : '';
 
-  s.getRange(row,1).setNumberFormat('@');
+  /* text format everywhere but the timestamp, so a phone like +55 11 9... */
+  /* is stored as text instead of being read as a formula                  */
+  s.getRange(row,1,1,G.UPDATED).setNumberFormat('@');
+  s.getRange(row,G.GID+1,1,2).setNumberFormat('@');
   s.getRange(row,1,1,GUEST_COLS).setValues([[
     party, String(g.first||'').trim(), String(g.last||'').trim(),
     String(g.email||'').trim(), String(g.phone||'').trim(),
@@ -652,13 +656,13 @@ function adminSaveParty(b){
   if(ymd(cur[P.DEADLINE]) !== ymd(p.deadline))
     logChange(id, '', 'RSVP deadline', ymd(cur[P.DEADLINE]) || '(none)', ymd(p.deadline) || '(none)', 'admin');
 
-  s.getRange(row, P.NAME+1).setValue(String(p.name||('Party '+id)));
+  s.getRange(row, P.NAME+1).setNumberFormat('@').setValue(String(p.name||('Party '+id)));
   s.getRange(row, P.OPEN+1).insertCheckboxes();
   s.getRange(row, P.OPEN+1).setValue(!!p.open);
   s.getRange(row, P.WAVE+1).setValue(p.wave === '' || p.wave === undefined ? '' : Number(p.wave));
   s.getRange(row, P.DEADLINE+1).setValue(ymd(p.deadline));
-  s.getRange(row, P.EMAILS+1).setValue(String(p.emails||''));
-  s.getRange(row, P.ADMIN+1).setValue(String(p.admin||''));
+  s.getRange(row, P.EMAILS+1).setNumberFormat('@').setValue(String(p.emails||''));
+  s.getRange(row, P.ADMIN+1).setNumberFormat('@').setValue(String(p.admin||''));
   if(!cur[P.TOKEN]){
     var t = newToken();
     s.getRange(row, P.TOKEN+1).setValue(t);

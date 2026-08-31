@@ -466,6 +466,8 @@ async function loadSite(){
 function applySite(site){
   if(!site) return;
   if(site.meals && site.meals.length) CONFIG.meals = site.meals;
+  if(typeof site.deadline === "string" && site.deadline) CONFIG.deadline = site.deadline;
+  if(site.email) CONFIG.email = site.email;
   if(site.venue)   CONFIG.venue   = site.venue;
   if(site.address) CONFIG.address = site.address;
 
@@ -567,9 +569,12 @@ const RSVP = {
       const res = await this.get({action:"party", token:this.token});
       if(!res.ok){ this.renderLookup(res.error || "We couldn't find that invitation link."); return; }
       this.party = res.party;
-      this.cfg   = res.config || {};
-      if(this.cfg.meals && this.cfg.meals.length)   CONFIG.meals    = this.cfg.meals;
-      if(typeof this.cfg.deadline === "string")     CONFIG.deadline = this.cfg.deadline;
+      this.cfg   = res.site || res.config || {};
+      applySite(res.site);
+      if(this.cfg.meals && this.cfg.meals.length) CONFIG.meals = this.cfg.meals;
+      /* a party's own deadline wins over the global one */
+      const dl = (res.party && res.party.deadline) || this.cfg.deadline;
+      if(typeof dl === "string" && dl) CONFIG.deadline = dl;
       this.applyPersonalisation();
       this.renderForm();
     }catch(err){

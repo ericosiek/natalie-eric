@@ -437,9 +437,9 @@ async function saveCard(card, pid){
 }
 
 async function addParty(){
-  const id = prompt('New party number, four digits (for example 0042):');
-  if(!id) return;
-  const pid = ('0000'+String(id).replace(/\D/g,'')).slice(-4);
+  const used = new Set((D.parties||[]).map(p => p.party));
+  let n = 1; while(used.has(('0000'+n).slice(-4))) n++;
+  const pid = ('0000'+n).slice(-4);
   openCards.add(pid);
   await run(() => api('admin.saveParty', {party:{party:pid, name:'Party '+pid, open:false, wave:1}}),
             'Party '+pid+' created');
