@@ -122,12 +122,16 @@ p:last-child{margin-bottom:0}
 .invite-greet{color:var(--ink-soft);font-size:1.08rem;font-style:italic;margin:.7rem 0 0;line-height:1.5}
 /* On a narrow phone the wide letter-spacing is what pushes the line over the
    edge, so it eases off and the place name stays whole. */
+/* Venue and city read as one line where there is room for it. Where there
+   isn't, the city takes a line of its own and the dot between them goes
+   away, rather than being left dangling at the end of the line above. */
 .meta-brk{display:none}
+@media (max-width:560px){
+  .meta-sep{display:none}
+  .meta-brk{display:inline}
+}
 @media (max-width:430px){
   .invite-meta{font-size:.62rem;letter-spacing:.2em}
-  /* the venue takes a line of its own rather than leaving the dot dangling */
-  .invite-meta .meta-sep{display:none}
-  .invite-meta .meta-brk{display:inline}
 }
 
 /* ---------- the envelope --------------------------------------
