@@ -44,6 +44,7 @@ function doGet(e){
     switch(p.action || 'party'){
       case 'ping':   return json({ok:true, pong:true, time:new Date().toISOString()});
       case 'site':   return json({ok:true, site:siteContent()});
+      case 'ics':    return icsFeed(p);
       case 'find':   return json(findParties(p.q));
       case 'party':  return json(getParty(p.token));
       default:       return json({ok:false, error:'Unknown action'});
@@ -276,17 +277,7 @@ function logChange(party, guest, field, from, to, by){
    ========================================================================== */
 
 function siteContent(){
-  var schedule = rows(SH.SCHEDULE)
-    .filter(function(r){ return String(r[3]).trim() && isTrue(r[7]); })
-    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
-    .map(function(r){
-      return {
-        start: String(r[1]).trim(), end: String(r[2]).trim(),
-        title: String(r[3]).trim(), place: String(r[4]).trim(),
-        note:  String(r[5]).trim(),
-        tags:  String(r[6]||'').split(',').map(function(s){return s.trim();}).filter(String)
-      };
-    });
+  var sched = scheduleState();
 
   var faq = rows(SH.FAQ)
     .filter(function(r){ return String(r[1]).trim() && isTrue(r[3]); })
@@ -299,14 +290,174 @@ function siteContent(){
     .map(function(r){ return String(r[1]).trim(); });
 
   return {
-    schedule: schedule,
+    schedule: sched.items,
+    /* the schedule's revision and the moment it last changed. The website
+       stamps both into every calendar entry it hands out, so a calendar can
+       tell an edit from a copy it already holds. */
+    rev:      sched.rev,
+    updated:  sched.at,
     faq:      faq,
     meals:    meals,
     deadline: ymd(cfg('RSVP Deadline','')),
+    date:     weddingDate(),
+    dateLong: prettyDateFull(weddingDate()),
+    tz:       weddingTz(),
+    countdownTo: String(cfg('Countdown To','')).trim(),
     venue:    String(cfg('Venue','Riverway Clubhouse')),
     address:  String(cfg('Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3')),
     email:    sendAsAddress()
   };
+}
+
+/* ==========================================================================
+   THE SCHEDULE, AND THE CALENDARS THAT FOLLOW IT
+   One list of events feeds three things: the timeline on the website, the
+   calendar entries guests download, and the live feed they can subscribe to.
+   They all read from here, so a change made in the portal cannot leave any
+   of them behind.
+   ========================================================================== */
+
+function weddingDate(){ return ymd(cfg('Wedding Date','2027-07-11')) || '2027-07-11'; }
+function weddingTz(){ return String(cfg('Time Zone','-07:00')).trim() || '-07:00'; }
+
+/* "Sunday, July 11, 2027" */
+function prettyDateFull(iso){
+  var p = String(iso||'').split('-');
+  if(p.length !== 3) return String(iso||'');
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  if(isNaN(d)) return String(iso);
+  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  return days[d.getDay()] + ', ' + prettyDate(iso);
+}
+
+function slugify(s){
+  var out = String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  return out.slice(0,40) || 'event';
+}
+
+/* The visible events, in order. Each carries an id derived from its name,
+   which is what a calendar uses to recognise an entry it already holds: keep
+   the name and an edit updates the entry in place instead of leaving a stale
+   second copy behind. */
+function scheduleItems(){
+  var seen = {};
+  return rows(SH.SCHEDULE)
+    .filter(function(r){ return String(r[3]).trim() && isTrue(r[7]); })
+    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
+    .map(function(r){
+      var id = slugify(r[3]);
+      seen[id] = (seen[id] || 0) + 1;
+      if(seen[id] > 1) id += '-' + seen[id];
+      return {
+        uid:   id,
+        start: String(r[1]).trim(), end: String(r[2]).trim(),
+        title: String(r[3]).trim(), place: String(r[4]).trim(),
+        note:  String(r[5]).trim(),
+        tags:  String(r[6]||'').split(',').map(function(x){ return x.trim(); }).filter(String)
+      };
+    });
+}
+
+/* The schedule, plus a revision number that moves only when something about
+   the day actually changes — whoever changed it, and whether they used the
+   portal or typed straight into the sheet. Calendars compare it to decide
+   whether an entry they are holding needs updating. */
+function scheduleState(){
+  var items = scheduleItems();
+  var print = Utilities.base64Encode(Utilities.computeDigest(
+      Utilities.DigestAlgorithm.MD5,
+      JSON.stringify(items) + '|' + weddingDate() + '|' + weddingTz() + '|' +
+      cfg('Venue','') + '|' + cfg('Venue Address','')));
+
+  var pr = props();
+  var was = pr.getProperty('SCHEDULE_PRINT');
+  var rev = Number(pr.getProperty('SCHEDULE_REV') || 0) || 0;
+  var at  = pr.getProperty('SCHEDULE_AT') || '';
+
+  if(was !== print || !at){
+    if(was) rev += 1;                       /* first run only records, no bump */
+    at = Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+    pr.setProperties({SCHEDULE_PRINT:print, SCHEDULE_REV:String(rev), SCHEDULE_AT:at});
+  }
+  return { items:items, rev:rev, at:at };
+}
+
+/* ---------- .ics ---------- */
+
+function icsEsc(s){
+  return String(s==null?'':s)
+    .replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,')
+    .replace(/\r?\n/g,'\\n');
+}
+/* RFC 5545 wants no line longer than 75 characters; continuations begin with
+   a single space. Folding happens at character boundaries so nothing splits
+   mid-letter. */
+function icsFold(line){
+  if(line.length <= 74) return line;
+  var out = line.slice(0,74), rest = line.slice(74);
+  while(rest.length > 73){ out += '\r\n ' + rest.slice(0,73); rest = rest.slice(73); }
+  return out + '\r\n ' + rest;
+}
+/* A clock time on the wedding day, in the venue's own offset, written in UTC
+   so that no calendar anywhere can misread it. */
+function icsStampFor(hhmm, plusDay){
+  var t = String(hhmm||'').trim();
+  if(!/^\d{1,2}:\d{2}$/.test(t)) return '';
+  if(t.length === 4) t = '0' + t;
+  var d = new Date(weddingDate() + 'T' + t + ':00' + weddingTz());
+  if(isNaN(d)) return '';
+  if(plusDay) d = new Date(d.getTime() + 864e5);
+  return Utilities.formatDate(d, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+}
+
+function buildIcs(state, only){
+  var items = state.items.filter(function(ev){ return !only || ev.uid === only; });
+  var venue = String(cfg('Venue','Riverway Clubhouse'));
+  var addr  = String(cfg('Venue Address',''));
+  var site  = siteUrl();
+  var name  = 'Natalie & Eric';
+  var when  = prettyDateFull(weddingDate());
+
+  var L = ['BEGIN:VCALENDAR','VERSION:2.0',
+           'PRODID:-//Natalie and Eric//Wedding//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+           'X-WR-CALNAME:' + name,          /* shown as the calendar's name; left unescaped */
+           'X-WR-CALDESC:' + icsEsc(when + '. This calendar keeps itself up to date.'),
+           'X-WR-TIMEZONE:America/Vancouver',
+           'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
+           'X-PUBLISHED-TTL:PT6H'];
+
+  items.forEach(function(ev){
+    var start = icsStampFor(ev.start);
+    if(!start) return;
+    var end = icsStampFor(ev.end) || start;
+    if(end <= start) end = icsStampFor(ev.end, true) || start;   /* runs past midnight */
+    var where = [ev.place || venue, addr].filter(String).join(', ');
+    var desc  = [ev.note, ev.tags.join(' \u00b7 ')].filter(String).join('\n');
+    L.push('BEGIN:VEVENT',
+      'UID:' + ev.uid + '-natalie-eric@natalie-eric.website',
+      'SEQUENCE:' + state.rev,
+      'DTSTAMP:' + state.at,
+      'LAST-MODIFIED:' + state.at,
+      'DTSTART:' + start,
+      'DTEND:' + end,
+      'SUMMARY:' + icsEsc(name + ': ' + ev.title),
+      'LOCATION:' + icsEsc(where),
+      'DESCRIPTION:' + icsEsc(desc),
+      'URL:' + site + '/#schedule',
+      'STATUS:CONFIRMED','TRANSP:OPAQUE','END:VEVENT');
+  });
+
+  L.push('END:VCALENDAR');
+  return L.map(icsFold).join('\r\n') + '\r\n';
+}
+
+/* The live feed. Guests subscribe to this once and their calendar re-reads it
+   on its own, so every later change to the schedule reaches them. */
+function icsFeed(p){
+  var only = p && p.e ? String(p.e).trim() : '';
+  var body = buildIcs(scheduleState(), only);
+  return ContentService.createTextOutput(body)
+                       .setMimeType(ContentService.MimeType.ICAL);
 }
 
 /* ==========================================================================
@@ -1207,6 +1358,9 @@ function setup(){
   seedConfig([
     ['RSVP Open','TRUE','Master switch. FALSE closes RSVPs for everyone, whatever the Parties tab says.'],
     ['Site URL','https://natalie-eric.website','Used to build each party invite link.'],
+    ['Wedding Date','2027-07-11','The day itself. Drives the countdown and every calendar entry.'],
+    ['Time Zone','-07:00','Vancouver runs at -07:00 in July. Calendar entries are written against this.'],
+    ['Countdown To','15:30','Clock time the front-page countdown counts down to. Blank means the first event of the day.'],
     ['Venue','Riverway Clubhouse','Shown on the schedule and in calendar entries.'],
     ['Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3','Used for the map and calendar entries.'],
     ['Notify Email','natalie.eric.2027@gmail.com','Where RSVP notifications go.'],

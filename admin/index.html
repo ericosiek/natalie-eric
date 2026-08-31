@@ -815,6 +815,16 @@ function renderContent(){
         <tbody>${D.schedule.map(rowSchedule).join('')}</tbody>
       </table>
       <p class="a-note" style="margin-top:.8rem">Times are 24 hour, so 15:30 is 3:30pm. Tags are comma separated and show as small pills.</p>
+      <p class="a-note" style="margin-top:.6rem">Saving here changes three things at once: the schedule on the
+        website, every calendar entry guests download from now on, and the live calendar feed. Guests who
+        <b>subscribed</b> get the new times on their own, usually within a few hours; anyone who saved a one&#8209;off
+        copy keeps the old times until they add it again, so for a real change of time it is still worth emailing them.
+        Keeping an item&rsquo;s title the same lets calendars update that entry in place rather than leaving a stale
+        copy beside it.</p>
+      <p class="a-note" style="margin-top:.6rem">Calendar feed:
+        <code id="icsUrl" style="word-break:break-all"></code>
+        <button class="btn ghost tiny" id="icsCopy" style="margin-left:.5rem">Copy</button>
+        <a class="btn ghost tiny" id="icsOpen" href="#" target="_blank" rel="noopener" style="margin-left:.3rem">Check it</a></p>
     </div>
 
     <div class="panel" style="margin-bottom:1.6rem">
@@ -842,6 +852,14 @@ function renderContent(){
     </div>`;
 
   wireRows();
+  const feed = API + '?action=ics';
+  const u = $('#icsUrl'); if(u) u.textContent = feed;
+  const o = $('#icsOpen'); if(o) o.href = feed;
+  const c = $('#icsCopy');
+  if(c) c.onclick = async () => {
+    try{ await navigator.clipboard.writeText(feed); toast('Calendar link copied'); }
+    catch(e){ toast('Could not copy &mdash; select the link instead', true); }
+  };
 }
 const chk = v => `<input type="checkbox" data-c="visible"${v!==false?' checked':''} style="width:auto">`;
 const del = `<td><button class="btn ghost tiny danger" data-rmrow>Remove</button></td>`;

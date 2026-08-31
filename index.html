@@ -74,7 +74,7 @@
         <p class="invite-greet" id="inviteGreet">request the pleasure of your company</p>
         <div class="rule tight"><i></i></div>
         <p class="invite-meta">
-          Sunday, July 11th 2027<br>
+          <span data-date="formal">Sunday, July 11th 2027</span><br>
           Riverway Clubhouse<span class="meta-sep"> &middot; </span><br class="meta-brk">Burnaby,&nbsp;BC
         </p>
       </div>
@@ -136,7 +136,7 @@
     <h1 class="hero-names rev">Natalie<span class="hero-amp">&amp;</span>Eric</h1>
     <div class="rule rev"><i></i></div>
     <p class="hero-meta rev">
-      <b>Sunday, July 11, 2027</b><br>
+      <b data-date="long">Sunday, July 11, 2027</b><br>
       Riverway Clubhouse<span class="meta-sep"> &middot; </span><br class="meta-brk">Burnaby,&nbsp;British&nbsp;Columbia
     </p>
     <div class="countdown rev" id="countdown" aria-label="Countdown to the wedding"></div>
@@ -211,16 +211,18 @@
 <section id="schedule">
   <div class="wrap">
     <div class="sec-head rev">
-      <p class="eyebrow">Sunday, July 11, 2027</p>
+      <p class="eyebrow" data-date="long">Sunday, July 11, 2027</p>
       <h2>Schedule</h2>
       <div class="rule"><i></i></div>
-      <p class="lede">How the day unfolds. Add any part of it to your calendar so nothing sneaks up on you.</p>
+      <p class="lede">How the day unfolds. Subscribe and the whole day lands in your
+        calendar &mdash; and stays right, even if something about it shifts between now and then.</p>
     </div>
 
     <div class="timeline" id="timeline"></div>
 
     <p class="center rev" style="margin-top:2.4rem">
-      <button class="btn ghost" id="addAll">Add the full schedule to my calendar</button>
+      <button class="btn" id="subAll" hidden>Subscribe to the schedule</button>
+      <button class="btn ghost" id="addAll">Add it once, as it stands</button>
     </p>
 
     <figure class="photo portrait rev">
@@ -297,7 +299,7 @@
   </span>
   <div class="rule tight"><i></i></div>
   <p class="foot-meta">
-    Natalie &amp; Eric &middot; July 11, 2027<br>
+    Natalie &amp; Eric &middot; <span data-date="short">July 11, 2027</span><br>
     Riverway Clubhouse &middot; Burnaby,&nbsp;BC<br>
     <a class="foot-mail" href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>
   </p>
@@ -322,6 +324,9 @@ const CONFIG = {
   // Fallbacks; the live values come from the Config tab of the RSVP sheet.
   meals:      ["Steak & Lobster", "Fish", "Vegetarian"],
   deadline:   "",                             // e.g. "2027-04-15"; blank = "at your earliest convenience"
+  countdownTo:"15:30",                        // what the countdown counts to; blank = the day's first event
+  rev:        0,                              // the schedule's revision, sent by the sheet
+  updated:    "",                             // when the schedule last changed
 
   // Registry items live in /registry/index.html.
 };
@@ -329,16 +334,20 @@ const CONFIG = {
 /* ============================================================
    SCHEDULE
    ============================================================ */
+/* A copy of the sheet's schedule, so the page has something to show before
+   the live one arrives (and if it never does). The keys match the ids the
+   sheet derives from each title, so an entry saved from here and one saved
+   later from the live copy are the same entry to a calendar. */
 const SCHEDULE = [
-  { key:"tea",    title:"Chinese Tea Ceremony", start:"11:00", end:"12:00",
+  { key:"chinese-tea-ceremony", title:"Chinese Tea Ceremony", start:"11:00", end:"12:00",
     tags:["Formal attire"], note:"Family and bridal party only." },
-  { key:"cer",    title:"Wedding Ceremony", start:"15:30", end:"17:00",
+  { key:"wedding-ceremony", title:"Wedding Ceremony", start:"15:30", end:"17:00",
     tags:["Formal attire"], note:"Guests arrive at 3:30pm. The ceremony begins promptly at 4pm." },
-  { key:"cock",   title:"Cocktail Hour", start:"17:00", end:"18:00",
+  { key:"cocktail-hour", title:"Cocktail Hour", start:"17:00", end:"18:00",
     tags:["Formal attire"], note:"" },
-  { key:"dinner", title:"Dinner & Reception", start:"18:00", end:"21:00",
+  { key:"dinner-reception", title:"Dinner & Reception", start:"18:00", end:"21:00",
     tags:["Formal attire"], note:"" },
-  { key:"dance",  title:"Dancing", start:"21:30", end:"23:59",
+  { key:"dancing", title:"Dancing", start:"21:30", end:"23:59",
     tags:["Formal attire"], note:"" }
 ];
 
@@ -371,6 +380,11 @@ const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => (
   {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function evDate(hhmm){ return new Date(CONFIG.date+"T"+hhmm+":00"+CONFIG.tz); }
+/* an event whose end reads earlier than its start runs past midnight */
+function evEnd(ev){
+  const a = evDate(ev.start), b = evDate(ev.end);
+  return b > a ? b : new Date(b.getTime() + 864e5);
+}
 function fmtTime(hhmm){
   const [h,m] = hhmm.split(":").map(Number);
   const ap = h>=12 ? "pm" : "am";
@@ -391,18 +405,34 @@ function deadlineSentence(){
 }
 
 /* ---------- calendar ---------- */
+/* The live feed, which a calendar can subscribe to and re-read on its own,
+   so a change to the schedule reaches everyone who saved it. */
+function feedUrl(one){
+  if(!CONFIG.apiUrl) return "";
+  return CONFIG.apiUrl + "?action=ics" + (one ? "&e="+encodeURIComponent(one) : "");
+}
+function icsUid(ev){ return (ev.uid || ev.key) + "-natalie-eric@natalie-eric.website"; }
+
 function icsFor(events){
+  const stamp = CONFIG.updated || icsStamp(new Date());
   const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Natalie and Eric//Wedding//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
   events.forEach(ev=>{
     const desc = [ev.note, ev.tags.join(" · ")].filter(Boolean).join("\\n");
+    /* The id and the revision are how a calendar recognises an entry it is
+       already holding: saving again after a change updates that entry in
+       place, rather than leaving a stale copy beside the new one. */
     lines.push("BEGIN:VEVENT",
-      "UID:"+ev.key+"-natalie-eric-2027@natalie-eric.website",
-      "DTSTAMP:"+icsStamp(new Date()),
+      "UID:"+icsUid(ev),
+      "SEQUENCE:"+(CONFIG.rev||0),
+      "DTSTAMP:"+stamp,
+      "LAST-MODIFIED:"+stamp,
       "DTSTART:"+icsStamp(evDate(ev.start)),
-      "DTEND:"+icsStamp(evDate(ev.end)),
+      "DTEND:"+icsStamp(evEnd(ev)),
       "SUMMARY:Natalie & Eric: "+ev.title,
-      "LOCATION:"+CONFIG.venue+", "+CONFIG.address,
+      "LOCATION:"+(ev.place||CONFIG.venue)+", "+CONFIG.address,
       "DESCRIPTION:"+desc,
+      "URL:https://natalie-eric.website/#schedule",
+      "STATUS:CONFIRMED",
       "END:VEVENT");
   });
   lines.push("END:VCALENDAR");
@@ -420,9 +450,9 @@ function googleUrl(ev){
   const p = new URLSearchParams({
     action:"TEMPLATE",
     text: "Natalie & Eric: "+ev.title,
-    dates: icsStamp(evDate(ev.start))+"/"+icsStamp(evDate(ev.end)),
+    dates: icsStamp(evDate(ev.start))+"/"+icsStamp(evEnd(ev)),
     details: [ev.note, ev.tags.join(" · ")].filter(Boolean).join("\n"),
-    location: CONFIG.venue+", "+CONFIG.address
+    location: (ev.place||CONFIG.venue)+", "+CONFIG.address
   });
   return "https://calendar.google.com/calendar/render?"+p.toString();
 }
@@ -431,11 +461,24 @@ function outlookUrl(ev){
     path:"/calendar/action/compose", rru:"addevent",
     subject: "Natalie & Eric: "+ev.title,
     startdt: evDate(ev.start).toISOString(),
-    enddt:   evDate(ev.end).toISOString(),
-    location: CONFIG.venue+", "+CONFIG.address,
+    enddt:   evEnd(ev).toISOString(),
+    location: (ev.place||CONFIG.venue)+", "+CONFIG.address,
     body: [ev.note, ev.tags.join(" · ")].filter(Boolean).join("\n")
   });
   return "https://outlook.live.com/calendar/0/deeplink/compose?"+p.toString();
+}
+
+/* Subscribing hands the calendar the address of the feed rather than a copy
+   of today's times, so the entries follow every later change on their own.
+   webcal: is what Apple Calendar and Outlook answer to; Google needs its own
+   "add by URL" page, so phones and desktops both land somewhere sensible. */
+function subscribe(url){
+  if(!url) return;
+  const web = url.replace(/^https?:/,"webcal:");
+  const goog = /android/i.test(navigator.userAgent);
+  window.location.href = goog
+    ? "https://calendar.google.com/calendar/u/0/r/settings/addbyurl?cid="+encodeURIComponent(url)
+    : web;
 }
 
 let openMenu = null;
@@ -443,11 +486,14 @@ function closeCalMenu(){ if(openMenu){ openMenu.remove(); openMenu=null; } }
 document.addEventListener("click", e=>{ if(openMenu && !openMenu.contains(e.target)) closeCalMenu(); });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeCalMenu(); });
 
-function calMenu(anchor, events, label){
+function calMenu(anchor, events, label, opts){
   closeCalMenu();
+  opts = opts || {};
+  const feed = feedUrl(opts.all ? "" : (events.length===1 ? events[0].uid : ""));
   const m = document.createElement("div");
   m.className = "cal-menu";
   m.innerHTML =
+    (feed ? '<button data-a="sub"><b>Subscribe</b><i>keeps itself up to date</i></button><div class="cal-sep"></div>' : "")+
     '<button data-a="apple">Apple / Outlook app</button>'+
     (events.length===1 ? '<button data-a="google">Google Calendar</button><button data-a="outlook">Outlook.com</button>'
                        : '<button data-a="google">Google Calendar (one at a time)</button>');
@@ -459,6 +505,7 @@ function calMenu(anchor, events, label){
   m.addEventListener("click", e=>{
     const b = e.target.closest("button"); if(!b) return;
     const a = b.dataset.a;
+    if(a==="sub")     subscribe(feed);
     if(a==="apple")   downloadIcs(events, label+".ics");
     if(a==="google")  events.forEach((ev,i)=> setTimeout(()=> window.open(googleUrl(ev),"_blank","noopener"), i*400));
     if(a==="outlook") window.open(outlookUrl(events[0]),"_blank","noopener");
@@ -496,10 +543,17 @@ function renderSchedule(){
       calMenu(b,[ev],"natalie-eric-"+ev.key);
     });
   });
-  $("#addAll").addEventListener("click", e=>{
+  /* set rather than added, because the schedule is rendered again whenever
+     the sheet's copy arrives and a second listener would fire twice */
+  $("#addAll").onclick = e=>{
     e.stopPropagation();
-    calMenu($("#addAll"), SCHEDULE, "natalie-eric-wedding");
-  });
+    calMenu($("#addAll"), SCHEDULE, "natalie-eric-wedding", {all:true});
+  };
+  const sub = $("#subAll");
+  if(sub){
+    sub.hidden = !feedUrl("");
+    sub.onclick = e=>{ e.stopPropagation(); subscribe(feedUrl("")); };
+  }
 }
 
 function renderFaq(){
@@ -532,7 +586,12 @@ function renderFaq(){
    COUNTDOWN
    ============================================================ */
 function renderCountdown(){
-  const target = evDate("15:30");
+  /* Counts down to whatever the sheet says to count down to, and to the first
+     event of the day if that is left blank — so it can never be left pointing
+     at a time that no longer exists. */
+  const to = (CONFIG.countdownTo || "").trim() ||
+             (SCHEDULE.length ? SCHEDULE[0].start : "15:30");
+  const target = evDate(/^\d{1,2}:\d{2}$/.test(to) ? (to.length===4?"0"+to:to) : "15:30");
   const tick = ()=>{
     const diff = target - new Date();
     const el = $("#countdown");
@@ -544,7 +603,9 @@ function renderCountdown(){
       unit(d,"Days")+unit(h,"Hours")+unit(m,"Minutes");
   };
   const unit = (n,l)=> `<div class="cd-unit"><div class="cd-num">${n}</div><div class="cd-lab">${l}</div></div>`;
-  tick(); setInterval(tick, 30000);
+  tick();
+  clearInterval(renderCountdown._t);
+  renderCountdown._t = setInterval(tick, 30000);
 }
 
 /* ============================================================
@@ -570,13 +631,28 @@ function applySite(site){
   if(site.venue)   CONFIG.venue   = site.venue;
   if(site.address) CONFIG.address = site.address;
 
-  if(site.schedule && site.schedule.length){
+  /* The day itself, so the countdown, the printed date and every calendar
+     entry are all reading the same value. */
+  if(site.date && /^\d{4}-\d{2}-\d{2}$/.test(site.date)) CONFIG.date = site.date;
+  if(site.tz) CONFIG.tz = site.tz;
+  if(site.dateLong) CONFIG.dateLong = site.dateLong;
+  if(typeof site.rev === "number") CONFIG.rev = site.rev;
+  if(site.updated) CONFIG.updated = site.updated;
+  if(typeof site.countdownTo === "string") CONFIG.countdownTo = site.countdownTo;
+  applyDate();
+
+  /* The sheet is the schedule. If an item is removed there it goes from the
+     page too, which is why this replaces the list outright rather than only
+     filling it in when something came back. */
+  if(site.schedule){
     SCHEDULE.length = 0;
     site.schedule.forEach((e,i)=> SCHEDULE.push({
-      key:"e"+i, title:e.title, start:e.start, end:e.end,
+      key:e.uid || ("e"+i), uid:e.uid || ("e"+i),
+      title:e.title, start:e.start, end:e.end,
       tags:e.tags||[], note:e.note||"", place:e.place||""
     }));
     renderSchedule();
+    renderCountdown();
   }
   if(site.faq && site.faq.length){
     FAQ.length = 0;
@@ -588,6 +664,26 @@ function applySite(site){
   }
   updateMap();
   initReveal();
+}
+
+/* Everywhere the date is printed, written from CONFIG so that changing it in
+   the sheet changes all of them at once. */
+function applyDate(){
+  const d = new Date(CONFIG.date+"T12:00:00");
+  if(isNaN(d)) return;
+  const long = CONFIG.dateLong ||
+    d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  const n = d.getDate();
+  const ord = (n%10===1&&n%100!==11)?"st":(n%10===2&&n%100!==12)?"nd":(n%10===3&&n%100!==13)?"rd":"th";
+  const formal = d.toLocaleDateString("en-US",{weekday:"long"}) + ", " +
+                 d.toLocaleDateString("en-US",{month:"long"}) + " " +
+                 n + ord + " " + d.getFullYear();
+  $$('[data-date="long"]').forEach(el => el.textContent = long);
+  $$('[data-date="formal"]').forEach(el => el.textContent = formal);
+  $$('[data-date="short"]').forEach(el => el.textContent =
+    d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}));
+  document.title = "Natalie & Eric · " +
+    d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
 }
 
 function updateMap(){
@@ -890,7 +986,7 @@ const RSVP = {
 
     $("#editAgain").addEventListener("click", ()=> this.renderForm());
     const tc = $("#thxCal");
-    if(tc) tc.addEventListener("click", e=>{ e.stopPropagation(); calMenu(tc, SCHEDULE, "natalie-eric-wedding"); });
+    if(tc) tc.addEventListener("click", e=>{ e.stopPropagation(); calMenu(tc, SCHEDULE, "natalie-eric-wedding", {all:true}); });
     this.wireNotYou();
   },
 

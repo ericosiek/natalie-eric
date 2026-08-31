@@ -479,6 +479,12 @@ section.alt{background:var(--ground-2)}
   color:var(--ink);padding:.85rem 1rem;transition:background .25s;
 }
 .cal-menu button:hover{background:var(--ground-2);color:var(--rose-deep)}
+.cal-menu button b{font-weight:400}
+.cal-menu button i{
+  display:block;font-style:normal;text-transform:none;letter-spacing:.02em;
+  font-size:.7rem;color:var(--ink-faint);margin-top:.16rem;
+}
+.cal-sep{height:1px;background:var(--line);margin:.3rem .6rem}
 
 /* ============================================================
    RSVP
