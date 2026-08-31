@@ -167,8 +167,9 @@ p:last-child{margin-bottom:0}
   transition:transform 1.15s cubic-bezier(.22,.66,.2,1);
 }
 .card-invite{
-  width:100%;
-  background:var(--surface);padding:clamp(2.6rem,7vw,4.4rem) clamp(1.5rem,6vw,3.6rem);
+  position:relative;width:100%;
+  background:var(--surface);
+  padding:clamp(4.4rem,10vw,6rem) clamp(1.5rem,6vw,3.6rem) clamp(2.6rem,7vw,4.4rem);
   text-align:center;box-shadow:var(--shadow-lg);
   border:1px solid rgba(198,169,122,.4);
   transition:box-shadow .9s var(--ease);
@@ -217,25 +218,28 @@ p:last-child{margin-bottom:0}
 
 .env-cta{margin:2.2rem 0 0;text-align:center;transition:opacity .45s var(--ease)}
 
-/* the two families, one either side, under the monogram */
+/* the two families, one in each top corner of the card */
 .invite-parents{
-  display:flex;justify-content:space-between;gap:1.2rem;
-  margin:-.4rem 0 1.9rem;
-  font-family:var(--sans);font-size:.6rem;letter-spacing:.17em;text-transform:uppercase;
-  color:var(--ink-faint);line-height:1.7;
+  position:absolute;top:clamp(1.3rem,3.4vw,2rem);
+  left:clamp(1.3rem,4vw,2.4rem);right:clamp(1.3rem,4vw,2.4rem);
+  display:flex;justify-content:space-between;gap:1rem;
+  font-family:var(--sans);font-size:.575rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-faint);line-height:1.85;pointer-events:none;
 }
-.invite-parents span{flex:1;max-width:48%}
+.invite-parents span{max-width:46%}
 .invite-parents span:first-child{text-align:left}
 .invite-parents span:last-child{text-align:right}
 @media (max-width:430px){
-  .invite-parents{flex-direction:column;align-items:center;gap:.35rem;margin-bottom:1.5rem}
-  .invite-parents span{max-width:none;text-align:center}
-  .invite-parents span:first-child,.invite-parents span:last-child{text-align:center}
+  .invite-parents{font-size:.53rem;letter-spacing:.12em}
 }
 
 /* ---------- state: sealed ---------- */
-/* tucked down inside the pocket, out of sight behind the flap */
-[data-state="sealed"] .env-letter{transform:translateY(24%) scale(.44)}
+/* Tucked down inside the pocket, out of sight behind the flap. The shift and
+   the scale are measured in script so the letter always lands inside the
+   envelope whatever the fonts do to the card's height. */
+[data-state="sealed"] .env-letter{
+  transform:translateY(var(--seal-shift,26%)) scale(var(--seal-scale,.44));
+}
 [data-state="sealed"] .card-invite{box-shadow:none}
 
 /* ---------- state: opening / open ---------- */

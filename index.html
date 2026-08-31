@@ -35,6 +35,11 @@
 
     <div class="env-letter">
       <div class="card-invite">
+        <div class="invite-parents">
+          <span>Mary and David<br>Wong</span>
+          <span>Yael and Victor<br>Osiek</span>
+        </div>
+
         <div class="seal">
           <span class="mono" aria-hidden="true">
             <svg width="64" height="34" viewBox="0 0 120 64" aria-hidden="true">
@@ -43,11 +48,6 @@
                     font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
             </svg>
           </span>
-        </div>
-
-        <div class="invite-parents">
-          <span>Mary &amp; David Wong</span>
-          <span>Yael &amp; Victor Osiek</span>
         </div>
 
         <p class="eyebrow">Together with their families</p>
@@ -947,6 +947,25 @@ const INV = {
     if(scene && card) scene.style.height = card.offsetHeight + "px";
   },
 
+  /* How far down, and how small, the letter has to sit to be properly inside
+     the envelope. Measured rather than guessed, because the card's height
+     depends on the fonts and the viewport. */
+  fitSealed(){
+    const st = this.stage();
+    const scene = document.querySelector(".env-scene");
+    const card  = document.querySelector(".env-letter .card-invite");
+    if(!st || !scene || !card || st.dataset.state !== "sealed") return;
+    const sceneH = scene.getBoundingClientRect().height;
+    const cardH  = card.offsetHeight;
+    if(!sceneH || !cardH) return;
+    /* the letter should fill the lower two thirds and stop short of the floor */
+    const wanted = sceneH * 0.60;
+    const scale  = Math.min(0.8, wanted / cardH);
+    const top    = sceneH * 0.30;
+    st.style.setProperty("--seal-scale", scale.toFixed(4));
+    st.style.setProperty("--seal-shift", Math.round(top) + "px");
+  },
+
   reset(){
     const ov = $("#invitation"), btn = $("#openInvite");
     if(!ov) return;
@@ -954,6 +973,7 @@ const INV = {
     if(scene) scene.style.height = "";
     ov.classList.remove("gone");
     this.state("sealed");
+    this.fitSealed();
     if(btn){ btn.disabled = false; btn.textContent = "Open Invitation"; }
     document.body.style.overflow = "hidden";
     window.scrollTo({top:0, behavior: REDUCED ? "auto" : "smooth"});
@@ -978,7 +998,12 @@ function initInvitation(){
 
   if(seen || deepLink){ ov.classList.add("gone"); document.body.style.overflow = ""; return; }
   document.body.style.overflow = "hidden";
-  setTimeout(()=>{ btn.focus(); }, 900);
+
+  INV.fitSealed();
+  /* fonts change the card's height, so measure again once they have landed */
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> INV.fitSealed());
+  window.addEventListener("resize", ()=> INV.fitSealed(), {passive:true});
+  setTimeout(()=>{ INV.fitSealed(); btn.focus(); }, 900);
 }
 
 function initNav(){

@@ -111,7 +111,10 @@ const REGISTRY = {
       url:"https://buy.stripe.com/6oU6oI5W82uOcH063a1sQ0d" },
     { id:"headphones", name:"Travel Headphones", art:"headphones",
       note:"For the long flight, and every one after it.",
-      url:"https://buy.stripe.com/14A7sM3O07P85ey63a1sQ0e" }
+      url:"https://buy.stripe.com/14A7sM3O07P85ey63a1sQ0e" },
+    { id:"adventure", name:"Adventure Fund", art:"peaks",
+      note:"Toward whatever we say yes to \u2014 a reef, a summit, a sunrise from a balloon.",
+      url:"https://buy.stripe.com/8x2eVeckwc5oayS2QY1sQ0g" }
   ]
 };
 
@@ -200,6 +203,13 @@ const ART = {
     '<path d="M14 44 H86" stroke="'+C+'"/>'+
     '<path d="M45 39 H55 V49 H45 Z"/>'+
     '<path d="M24 64 V69"/><path d="M76 64 V69"/>'),
+
+  /* mountains at first light, for whatever we say yes to */
+  peaks: svg(
+    '<path d="M10 60 L34 26 L50 47 L62 33 L90 60 Z"/>'+
+    '<path d="M34 26 L41 36" stroke="'+C+'"/>'+
+    '<circle cx="70" cy="19" r="7" stroke="'+C+'"/>'+
+    '<path d="M8 66 H92" stroke="'+C+'"/>'),
 
   /* a heart-shaped hot air balloon: love and the journey in one mark */
   balloon: svg(
