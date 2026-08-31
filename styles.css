@@ -135,8 +135,14 @@ p:last-child{margin-bottom:0}
 
 .env-scene{
   position:relative;width:100%;aspect-ratio:1/.63;
-  perspective:1500px;overflow:hidden;
-  transition:height 1.05s cubic-bezier(.22,.66,.2,1) .5s;
+  perspective:1500px;
+  /* Clip only along the bottom edge, so the letter can never hang out below
+     the envelope while it is still inside, but the flap is free to swing up
+     past the top. */
+  clip-path:inset(-1500px -1500px 0 -1500px);
+  /* the height is set in pixels from script, so it animates from one real
+     number to another; the aspect ratio is only the fallback */
+  transition:height 1.15s cubic-bezier(.22,.66,.2,1);
 }
 .env-letter,.env-shell,.env-seal{pointer-events:none}
 
@@ -156,7 +162,7 @@ p:last-child{margin-bottom:0}
   background:linear-gradient(168deg,#F8EDE5 0%,#F0DED3 58%,#E8D0C3 100%);
   border:1px solid rgba(198,169,122,.55);
   box-shadow:0 30px 66px -26px rgba(120,74,64,.45), inset 0 1px 0 rgba(255,255,255,.7);
-  transition:opacity .6s var(--ease) .55s, transform .9s var(--ease) .45s;
+  transition:opacity .6s var(--ease), transform .9s var(--ease);
 }
 
 /* the letter, and the invitation printed on it */
@@ -184,7 +190,7 @@ p:last-child{margin-bottom:0}
   background:linear-gradient(2deg,#F3E3D9 0%,#EEDACE 60%,#E9D2C5 100%);
   border:1px solid rgba(198,169,122,.5);border-top:0;
   box-shadow:0 -2px 10px rgba(120,74,64,.09);
-  transition:opacity .6s var(--ease) .55s, transform .9s var(--ease) .45s;
+  transition:opacity .6s var(--ease), transform .9s var(--ease);
 }
 /* the two folded side panels of the pocket */
 .env-front::before{
@@ -202,7 +208,7 @@ p:last-child{margin-bottom:0}
   clip-path:polygon(0 0,100% 0,50% 100%);
   transform-origin:50% 0;transform:rotateX(0deg);
   backface-visibility:hidden;
-  transition:transform .95s cubic-bezier(.4,.02,.24,1) .2s, filter .95s var(--ease) .2s, opacity .5s var(--ease) .9s;
+  transition:transform .95s cubic-bezier(.4,.02,.24,1) .35s, filter .95s var(--ease) .35s, opacity .5s var(--ease) 2.2s;
 }
 
 /* the wax seal, holding the flap down */
@@ -226,9 +232,7 @@ p:last-child{margin-bottom:0}
   font-family:var(--sans);font-size:.575rem;letter-spacing:.16em;text-transform:uppercase;
   color:var(--ink-faint);line-height:1.85;pointer-events:none;
 }
-.invite-parents span{max-width:46%}
-.invite-parents span:first-child{text-align:left}
-.invite-parents span:last-child{text-align:right}
+.invite-parents span{max-width:46%;text-align:center}
 @media (max-width:430px){
   .invite-parents{font-size:.53rem;letter-spacing:.12em}
 }
@@ -251,29 +255,31 @@ p:last-child{margin-bottom:0}
 [data-state="open"]    .env-flap{
   transform:rotateX(-168deg);filter:brightness(.93);
 }
+/* the letter holds still inside the open envelope for a beat, then rises */
 [data-state="opening"] .env-letter,
 [data-state="open"]    .env-letter{
   transform:translateY(0) scale(1);
-  transition-delay:.75s;
+  transition-delay:1.55s;
 }
 [data-state="opening"] .env-body,
 [data-state="open"]    .env-body,
 [data-state="opening"] .env-front,
 [data-state="open"]    .env-front{
   opacity:0;transform:translateY(20px);
-  transition-delay:1.25s,1.25s;
+  transition-delay:2.25s,2.25s;
 }
-[data-state="opening"] .env-flap{transition-delay:.2s,.2s,1.25s}
 [data-state="opening"] .env-flap,
 [data-state="open"]    .env-flap{opacity:0}
 /* the scene grows to the letter's height so the button stays clear of it */
 [data-state="opening"] .env-scene,
-[data-state="open"]    .env-scene{aspect-ratio:auto;overflow:visible}
+[data-state="open"]    .env-scene{aspect-ratio:auto}
+[data-state="open"]    .env-scene,
+[data-state="leaving"] .env-scene{clip-path:none}
 
 /* ---------- state: leaving ---------- */
 [data-state="leaving"] .env-letter{
-  transform:translateY(-16%) scale(1.05);opacity:0;
-  transition:transform .85s var(--ease), opacity .7s var(--ease);
+  transform:translateY(-10px) scale(1.01);opacity:0;
+  transition:transform .8s var(--ease), opacity .65s var(--ease);
 }
 [data-state="leaving"] .env-cta{opacity:0}
 

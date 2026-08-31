@@ -920,13 +920,15 @@ const INV = {
       if(btn) btn.textContent = "Enter our website";
       return;
     }
-    this.fitScene();
     this.state("opening");
     if(btn) btn.disabled = true;
+    /* the envelope opens first; the letter only starts to rise once the flap
+       is out of the way, so the scene grows on the same beat */
+    setTimeout(()=> this.fitScene(), 1550);
     setTimeout(()=>{
       this.state("open");
       if(btn){ btn.disabled = false; btn.textContent = "Enter our website"; btn.focus(); }
-    }, 1950);
+    }, 2850);
   },
 
   leave(){
@@ -955,15 +957,21 @@ const INV = {
     const scene = document.querySelector(".env-scene");
     const card  = document.querySelector(".env-letter .card-invite");
     if(!st || !scene || !card || st.dataset.state !== "sealed") return;
-    const sceneH = scene.getBoundingClientRect().height;
+    const shell  = document.querySelector(".env-shell");
+    const sceneH = shell ? shell.getBoundingClientRect().height
+                         : scene.getBoundingClientRect().height;
     const cardH  = card.offsetHeight;
     if(!sceneH || !cardH) return;
-    /* the letter should fill the lower two thirds and stop short of the floor */
-    const wanted = sceneH * 0.60;
-    const scale  = Math.min(0.8, wanted / cardH);
-    const top    = sceneH * 0.30;
+    /* Sit the letter high in the envelope so that the moment the flap lifts
+       you can see it in there, waiting, before it slides out. Its lower half
+       stays hidden behind the front pocket. */
+    const scale = Math.min(0.72, (sceneH * 1.15) / cardH);
+    const top   = sceneH * 0.07;
     st.style.setProperty("--seal-scale", scale.toFixed(4));
     st.style.setProperty("--seal-shift", Math.round(top) + "px");
+    /* pin the scene to the envelope's own height so the later growth is a
+       plain pixel-to-pixel transition rather than a jump */
+    scene.style.height = Math.round(sceneH) + "px";
   },
 
   reset(){
