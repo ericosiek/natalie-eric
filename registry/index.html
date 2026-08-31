@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Registry &middot; Natalie &amp; Eric</title>
+<title>Honeymoon Fund &middot; Natalie &amp; Eric</title>
 <meta name="description" content="Our wedding registry. Contribute any amount toward the honeymoon, our home, or a gift from our wish list.">
 <meta name="theme-color" content="#FBF7F4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,11 +25,12 @@
     </a>
     <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
     <nav class="nav-links" id="navLinks">
+      <a href="/">Invitation</a>
       <a href="/#welcome">Welcome</a>
       <a href="/#schedule">Schedule</a>
       <a href="/#rsvp">RSVP</a>
       <a href="/#faq">FAQ</a>
-      <a href="/registry/" class="active">Registry</a>
+      <a href="/registry/" class="active">Honeymoon Fund</a>
     </nav>
   </div>
 </header>
@@ -38,16 +39,13 @@
 <section>
   <div class="wrap">
     <div class="sec-head rev">
-      <p class="eyebrow">With gratitude</p>
-      <h2>Registry</h2>
+      <h2>Honeymoon Fund</h2>
       <div class="rule"><i></i></div>
       <div class="reg-intro">
-        <p>We have set up a flexible registry where you can contribute any amount you wish toward
-           the items on our wish list. You can browse our registry below to give securely online
-           using a credit card.</p>
-        <p>If you would prefer to send a gift via e&#8209;transfer, you can send it directly to our email at
-           <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>.
-           We are also happy to accept cash or cheques.</p>
+        <p>Your presence is enough of a present to us! If you should like to celebrate with a gift,
+           a cash contribution, e&#8209;transfer to
+           <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>
+           or contribution to our Honeymoon Fund would be greatly appreciated. Thank you!</p>
       </div>
     </div>
 
@@ -85,24 +83,32 @@
    ============================================================ */
 const REGISTRY = {
   funds: [
-    { id:"honeymoon", name:"Honeymoon Fund", amount:null, art:"plane",
-      note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we'll remember.", url:"https://buy.stripe.com/9B68wQbgs2uO8qK77e1sQ00" }
+    { id:"honeymoon", name:"Honeymoon Fund", art:"sun",
+      note:"Contribute any amount toward our honeymoon. Every bit of it goes somewhere we will remember.",
+      url:"https://buy.stripe.com/9B68wQbgs2uO8qK77e1sQ00" }
   ],
   gifts: [
-    { id:"kitchen",  name:"Something small for the kitchen", amount:50, art:"whisk",
-      note:"The little things that quietly make a kitchen work.", url:"https://buy.stripe.com/aFa7sM98k5H022m2QY1sQ01" },
-    { id:"knife",    name:"A chef's knife", amount:100, art:"knife",
-      note:"One really good one, sharpened for years.", url:"https://buy.stripe.com/eVqbJ2aco8TcbCWdvC1sQ02" },
-    { id:"pot",      name:"A cast iron dutch oven", amount:150, art:"pot",
-      note:"For the slow Sunday cooking we keep promising ourselves.", url:"https://buy.stripe.com/eVq14o84gd9sfTc1MU1sQ03" },
-    { id:"dinner",   name:"A romantic dinner for two", amount:250, art:"toast",
-      note:"One unhurried evening on our honeymoon, just the two of us.", url:"https://buy.stripe.com/00w3cw5W8edw0Yicry1sQ04" },
-    { id:"espresso", name:"An espresso machine", amount:500, art:"espresso",
-      note:"The first thing we'll use every single morning.", url:"https://buy.stripe.com/00w28s70cd9s6iCfDK1sQ05" },
-    { id:"weekend",  name:"A weekend away", amount:1000, art:"suitcase",
-      note:"Toward a proper trip once the wedding dust settles.", url:"https://buy.stripe.com/6oU9AU84gb1kcH02QY1sQ06" },
-    { id:"day",      name:"A whole day of the honeymoon", amount:1500, art:"sun",
-      note:"Breakfast to nightcap, entirely on you.", url:"https://buy.stripe.com/14A6oIaco4CWayS2QY1sQ07" }
+    { id:"dinner", name:"Romantic Dinner For Two", art:"toast",
+      note:"One unhurried evening, just the two of us.",
+      url:"https://buy.stripe.com/8x29AU2JW7P84au3V21sQ08" },
+    { id:"spa", name:"Couple's Spa Day", art:"spa",
+      note:"A slow morning of being thoroughly looked after.",
+      url:"https://buy.stripe.com/00w9AU2JWedw22m2QY1sQ09" },
+    { id:"tour", name:"Sightseeing Tour", art:"compass",
+      note:"A day spent properly exploring somewhere new.",
+      url:"https://buy.stripe.com/5kQ6oI0BO8Tc7mGajq1sQ0a" },
+    { id:"flight", name:"Round Trip Flight", art:"plane",
+      note:"Toward getting us there and home again.",
+      url:"https://buy.stripe.com/fZu00k70c0mGfTcdvC1sQ0b" },
+    { id:"stay", name:"Travel Accommodations", art:"bed",
+      note:"Toward somewhere lovely to come back to each night.",
+      url:"https://buy.stripe.com/5kQ5kEesE6L4aySezG1sQ0c" },
+    { id:"luggage", name:"New Luggage Set", art:"suitcase",
+      note:"Something that will survive many more trips after this one.",
+      url:"https://buy.stripe.com/6oU6oI5W82uOcH063a1sQ0d" },
+    { id:"headphones", name:"Travel Headphones", art:"headphones",
+      note:"For the long flight, and every one after it.",
+      url:"https://buy.stripe.com/14A7sM3O07P85ey63a1sQ0e" }
   ]
 };
 
@@ -198,6 +204,26 @@ const ART = {
     '<path d="M33 17 L36.5 20.5"/><path d="M67 17 L63.5 20.5"/>'+
     '<path d="M33 51 L36.5 47.5"/><path d="M67 51 L63.5 47.5"/>'+
     '<path d="M12 60 H88" stroke="'+C+'"/>'),
+
+  spa: svg(
+    '<ellipse cx="50" cy="58" rx="22" ry="7"/>'+
+    '<ellipse cx="50" cy="46" rx="16" ry="6"/>'+
+    '<ellipse cx="50" cy="36" rx="11" ry="5"/>'+
+    '<path d="M50 31 C 43 23, 45 12, 54 7 C 61 14, 59 25, 50 31 Z" stroke="'+C+'"/>'+
+    '<path d="M50 31 C 51 23, 52 16, 54 9" stroke="'+C+'"/>'),
+
+  compass: svg(
+    '<circle cx="50" cy="40" r="25"/>'+
+    '<path d="M62 27 L46 37 L38 53 L54 43 Z"/>'+
+    '<circle cx="50" cy="40" r="2.4"/>'+
+    '<path d="M50 8 V14" stroke="'+C+'"/><path d="M50 66 V72" stroke="'+C+'"/>'+
+    '<path d="M18 40 H24" stroke="'+C+'"/><path d="M76 40 H82" stroke="'+C+'"/>'),
+
+  headphones: svg(
+    '<path d="M20 52 V38 A30 30 0 0 1 80 38 V52"/>'+
+    '<path d="M14 50 H26 A3 3 0 0 1 29 53 V66 A3 3 0 0 1 26 69 H14 A3 3 0 0 1 11 66 V53 A3 3 0 0 1 14 50 Z"/>'+
+    '<path d="M74 50 H86 A3 3 0 0 1 89 53 V66 A3 3 0 0 1 86 69 H74 A3 3 0 0 1 71 66 V53 A3 3 0 0 1 74 50 Z"/>'+
+    '<path d="M20 55 V64" stroke="'+C+'"/><path d="M80 55 V64" stroke="'+C+'"/>'),
 
   whisk: svg(
     '<path d="M50 54 C 32 48, 30 24, 50 14"/>'+
