@@ -41,6 +41,13 @@ body{font-size:16px}
 .a-bar .grow{margin-left:auto}
 .a-search{max-width:280px}
 .a-note{font-family:var(--sans);font-size:.7rem;letter-spacing:.08em;color:var(--ink-faint)}
+.a-save{
+  font-family:var(--sans);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);flex:none;transition:color .3s;
+}
+.a-save[data-state="unsaved"]{color:var(--champagne)}
+.a-save[data-state="saving"]{color:var(--rose)}
+.a-save[data-state="error"]{color:#B4453C}
 .a-card{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:.85rem}
 .a-head{display:flex;align-items:center;gap:.9rem;padding:1rem 1.2rem;cursor:pointer;flex-wrap:wrap}
 .a-head:hover{background:var(--ground)}
@@ -183,7 +190,10 @@ function toast(text, bad){
 
 async function api(action, payload){
   if(!API){ toast('The admin API URL has not been set yet.', true); throw new Error('no api'); }
-  const body = Object.assign({action, token: TOKEN}, payload || {});
+  /* light:true tells the server to leave the change log out of the reply.
+     It is by far the biggest part of the payload and only the Change log
+     tab ever reads it, so every other call goes without. */
+  const body = Object.assign({action, token: TOKEN, light: true}, payload || {});
   const r = await fetch(API, {
     method:'POST', redirect:'follow',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -192,9 +202,90 @@ async function api(action, payload){
   const j = await r.json();
   if(j.reauth){ signOut(); throw new Error(j.error); }
   if(!j.ok) throw new Error(j.error || 'Something went wrong.');
-  if(j.data) D = j.data;
+  if(j.data){
+    const keepLog = D && D.log;
+    D = j.data;
+    if(D.log == null) D.log = keepLog || null;   /* a light reply carries no log */
+  }
   return j;
 }
+
+/* ---------------- saving as you type ----------------
+   Every field writes itself a moment after you stop typing, so there is
+   never unsaved work sitting in the page waiting to be lost. Edits are
+   collected per party and sent as one request. */
+const pending = new Map();      /* pid -> {party:{}, guests:Map(row->{}), remove:Set} */
+const timers  = new Map();
+let saving = 0;
+
+function draft(pid){
+  if(!pending.has(pid)) pending.set(pid, {party:null, guests:new Map(), remove:new Set()});
+  return pending.get(pid);
+}
+function markDirty(pid){
+  setSaveState(pid, 'unsaved');
+  clearTimeout(timers.get(pid));
+  timers.set(pid, setTimeout(() => flush(pid), 900));
+}
+function setSaveState(pid, state){
+  const el = document.querySelector('.a-card[data-party="'+cssEsc(pid)+'"] [data-state]');
+  if(!el) return;
+  el.dataset.state = state;
+  el.textContent = state === 'unsaved' ? 'Unsaved changes'
+                 : state === 'saving'  ? 'Saving…'
+                 : state === 'error'   ? 'Not saved'
+                 : 'All changes saved';
+}
+const cssEsc = v => String(v).replace(/["\\]/g, '\\$&');
+
+async function flush(pid, opts){
+  clearTimeout(timers.get(pid));
+  const d = pending.get(pid);
+  if(!d || (!d.party && !d.guests.size && !d.remove.size)) return;
+  pending.delete(pid);
+
+  const payload = {
+    party:  d.party || undefined,
+    guests: Array.from(d.guests.values()),
+    remove: Array.from(d.remove)
+  };
+  setSaveState(pid, 'saving');
+  saving++;
+  try{
+    await api('admin.savePartyBundle', payload);
+    setSaveState(pid, 'saved');
+    if(!(opts && opts.quiet)) refreshCardChrome(pid);
+  }catch(e){
+    setSaveState(pid, 'error');
+    toast(e.message, true);
+    throw e;
+  }finally{ saving--; }
+}
+
+/* everything queued, in one go — used before anything that re-renders */
+async function flushAll(){
+  const ids = Array.from(pending.keys());
+  for(const id of ids){ try{ await flush(id, {quiet:true}); }catch(e){} }
+}
+
+/* update the chips and counts on a card without rebuilding its inputs,
+   so the cursor never jumps out of the box you are typing in */
+function refreshCardChrome(pid){
+  const p = (D.parties || []).find(x => x.party === pid);
+  const card = document.querySelector('.a-card[data-party="'+cssEsc(pid)+'"]');
+  if(!p || !card) return;
+  const head = card.querySelector('.a-head');
+  if(head) head.innerHTML = cardHead(p);
+  const t = card.querySelector('.a-head [data-toggle-hit]');
+  wireHead(card, pid);
+  renderTotals();
+}
+
+window.addEventListener('beforeunload', e => {
+  if(pending.size || saving){ e.preventDefault(); e.returnValue = ''; }
+});
+/* a tab switch away from the browser is a good moment to save */
+document.addEventListener('visibilitychange', () => { if(document.hidden) flushAll(); });
 
 /* ---------------- login ---------------- */
 async function signIn(){
@@ -241,7 +332,10 @@ const TABS = [['guests','Guests & parties'],['email','Email'],['content','Site c
 function renderTabs(){
   $('#tabs').innerHTML = TABS.map(([k,l]) =>
     `<button class="a-tab${k===tab?' on':''}" data-tab="${k}">${h(l)}</button>`).join('');
-  $$('#tabs .a-tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderTabs(); render(); });
+  $$('#tabs .a-tab').forEach(b => b.onclick = async () => {
+    await flushAll();                 /* never leave a queued edit behind */
+    tab = b.dataset.tab; renderTabs(); render();
+  });
 }
 function render(){
   TABS.forEach(([k]) => $('#p-'+k).hidden = (k !== tab));
@@ -254,14 +348,18 @@ function render(){
    ============================================================ */
 function partyGuests(pid){ return D.guests.filter(g => g.party === pid); }
 
+function renderTotals(){
+  const el = document.querySelector('#p-guests .stat');
+  if(!el) return;
+  el.innerHTML = `
+    <div><b>${D.parties.length}</b><span>Parties</span></div>
+    <div><b>${D.guests.length}</b><span>Guests</span></div>
+    <div><b>${D.guests.filter(g => g.attending).length}</b><span>Replied</span></div>
+    <div><b>${D.guests.filter(g => g.attending === 'yes').length}</b><span>Attending</span></div>`;
+}
+
 function renderGuests(){
   const q = (window.__q || '').trim().toLowerCase();
-  const totals = {
-    guests: D.guests.length,
-    parties: D.parties.length,
-    replied: D.guests.filter(g => g.attending).length,
-    yes: D.guests.filter(g => g.attending === 'yes').length
-  };
 
   let list = D.parties.slice().sort((a,b) => a.party.localeCompare(b.party));
   if(q){
@@ -272,34 +370,41 @@ function renderGuests(){
   }
 
   $('#p-guests').innerHTML = `
-    <div class="stat">
-      <div><b>${totals.parties}</b><span>Parties</span></div>
-      <div><b>${totals.guests}</b><span>Guests</span></div>
-      <div><b>${totals.replied}</b><span>Replied</span></div>
-      <div><b>${totals.yes}</b><span>Attending</span></div>
-    </div>
+    <div class="stat"></div>
     <div class="a-bar">
       <input class="a-search" type="text" id="q" placeholder="Search name, email or party"
              value="${h(window.__q||'')}">
       <span class="grow"></span>
+      <button class="btn ghost sm" id="reload">Reload from sheet</button>
       <button class="btn ghost sm" id="addParty">Add a party</button>
       <a class="btn ghost sm" href="${h(D.sheetUrl)}" target="_blank" rel="noopener">Open the sheet</a>
     </div>
+    <p class="a-note" style="margin:-.7rem 0 1.4rem;line-height:1.8">
+      Everything here saves itself a moment after you stop typing &mdash; there is no Save button to forget.
+      You can also type rows straight into the Guests tab of the sheet; hit <b>Reload from sheet</b> and
+      they appear here with their links already made.
+    </p>
     ${list.map(partyCard).join('') || '<p class="a-note">No parties yet. Add one to get started.</p>'}`;
 
-  $('#q').oninput = e => { window.__q = e.target.value; renderGuests(); };
+  renderTotals();
+  let qt;
+  $('#q').oninput = e => {
+    window.__q = e.target.value;
+    clearTimeout(qt); qt = setTimeout(renderGuests, 180);
+  };
   $('#addParty').onclick = addParty;
+  $('#reload').onclick = async () => {
+    await flushAll();
+    await run(() => api('admin.data', {light:true}), 'Reloaded');
+  };
   wireCards();
 }
 
-function partyCard(p){
+function cardHead(p){
   const gs = partyGuests(p.party);
   const replied = gs.filter(g => g.attending).length;
   const yes = gs.filter(g => g.attending === 'yes').length;
-  const isOpen = openCards.has(p.party);
   return `
-  <div class="a-card" data-party="${h(p.party)}">
-    <div class="a-head" data-toggle>
       <span class="a-pid">${h(p.party)}</span>
       <span class="a-name">${h(p.name)}</span>
       <span class="a-chip">${gs.length} guest${gs.length===1?'':'s'}</span>
@@ -307,7 +412,39 @@ function partyCard(p){
       ${p.wave ? `<span class="a-chip">Wave ${h(p.wave)}</span>` : ''}
       ${p.sent ? '<span class="a-chip">Invited</span>' : '<span class="a-chip">Not invited</span>'}
       <span class="a-chip ${p.open?'open':'shut'}">${p.open?'RSVP open':'RSVP closed'}</span>
-    </div>
+      <span class="grow"></span>
+      <span class="a-save" data-state="saved">All changes saved</span>`;
+}
+
+function guestRow(g){
+  return `
+    <tr data-row="${g.row}">
+      <td><input type="text" data-g="first" value="${h(g.first)}"></td>
+      <td><input type="text" data-g="last" value="${h(g.last)}"></td>
+      <td><input type="email" data-g="email" value="${h(g.email)}"></td>
+      <td><input type="text" data-g="phone" value="${h(g.phone)}" placeholder="+1 604 555 0134"></td>
+      <td><select data-g="attending">
+        <option value=""${g.attending?'':' selected'}>No reply</option>
+        <option value="yes"${g.attending==='yes'?' selected':''}>Accepts</option>
+        <option value="no"${g.attending==='no'?' selected':''}>Declines</option>
+      </select></td>
+      <td><select data-g="meal">
+        <option value="">&mdash;</option>
+        ${D.meals.filter(m=>m.visible).map(m =>
+          `<option${g.meal===m.meal?' selected':''}>${h(m.meal)}</option>`).join('')}
+      </select></td>
+      <td><input type="text" data-g="diet" value="${h(g.diet)}"></td>
+      <td><input type="text" data-g="party" value="${h(g.party)}" style="width:74px"></td>
+      <td><button class="btn ghost tiny danger" data-del="${g.row}">Remove</button></td>
+    </tr>`;
+}
+
+function partyCard(p){
+  const gs = partyGuests(p.party);
+  const isOpen = openCards.has(p.party);
+  return `
+  <div class="a-card" data-party="${h(p.party)}">
+    <div class="a-head">${cardHead(p)}</div>
     <div class="a-body" ${isOpen?'':'hidden'}>
       <div class="grid4">
         <div class="field tight"><label class="lab sm">Party name</label>
@@ -324,7 +461,8 @@ function partyCard(p){
       </div>
       <div class="grid2">
         <div class="field tight"><label class="lab sm">Email address(es), comma separated</label>
-          <input type="text" data-f="emails" value="${h(p.emails)}" placeholder="one@example.com, two@example.com"></div>
+          <input type="text" data-f="emails" value="${h(p.emails)}" placeholder="one@example.com, two@example.com">
+          <p class="a-note" style="margin:.45rem 0 0">Kept in step with the guest emails below as you type.</p></div>
         <div class="field tight"><label class="lab sm">Private note (guests never see this)</label>
           <input type="text" data-f="admin" value="${h(p.admin)}"></div>
       </div>
@@ -341,40 +479,18 @@ function partyCard(p){
           <col style="width:14%"><col style="width:7%"><col style="width:3%"></colgroup>
         <thead><tr><th>First</th><th>Last</th><th>Email</th><th>Phone</th>
           <th>RSVP</th><th>Meal</th><th>Dietary</th><th>Party</th><th></th></tr></thead>
-        <tbody>
-        ${gs.map(g => `
-          <tr data-row="${g.row}">
-            <td><input type="text" data-g="first" value="${h(g.first)}"></td>
-            <td><input type="text" data-g="last" value="${h(g.last)}"></td>
-            <td><input type="email" data-g="email" value="${h(g.email)}"></td>
-            <td><input type="text" data-g="phone" value="${h(g.phone)}" placeholder="+1 604 555 0134"></td>
-            <td><select data-g="attending">
-              <option value=""${g.attending?'':' selected'}>No reply</option>
-              <option value="yes"${g.attending==='yes'?' selected':''}>Accepts</option>
-              <option value="no"${g.attending==='no'?' selected':''}>Declines</option>
-            </select></td>
-            <td><select data-g="meal">
-              <option value="">&mdash;</option>
-              ${D.meals.filter(m=>m.visible).map(m =>
-                `<option${g.meal===m.meal?' selected':''}>${h(m.meal)}</option>`).join('')}
-            </select></td>
-            <td><input type="text" data-g="diet" value="${h(g.diet)}"></td>
-            <td><input type="text" data-g="party" value="${h(g.party)}" style="width:74px"></td>
-            <td><button class="btn ghost tiny danger" data-del="${g.row}">Remove</button></td>
-          </tr>`).join('')}
-        </tbody>
+        <tbody>${gs.map(guestRow).join('')}</tbody>
       </table>
       </div>
 
       <div class="a-bar" style="margin:1.3rem 0 0">
         <button class="btn ghost sm" data-add>Add a guest</button>
         <span class="grow"></span>
-        <button class="btn ghost sm" data-mail="invite">${p.sent ? 'Resend invitation' : 'Send invitation'}</button>
+        <button class="btn ghost sm" data-mail="invite">Send invitation</button>
         <button class="btn ghost sm" data-mail="reminder">Send reminder</button>
-        <button class="btn sm" data-save>Save this party</button>
-        <button class="btn ghost tiny danger" data-delparty>Delete party</button>
+        <button class="btn ghost sm danger" data-delparty>Delete party</button>
       </div>
-      <p class="a-note" style="margin-top:.9rem">
+      <p class="a-note" style="margin:1rem 0 0;line-height:1.9">
         ${p.sent ? 'Invitation sent '+fmt(p.sent)+'. ' : 'No invitation sent yet. Sending one opens their RSVP automatically. '}
         ${p.reminded ? 'Reminder sent '+fmt(p.reminded)+'. ' : ''}
         ${p.lastReply ? 'Last reply '+fmt(p.lastReply)+'.' : ''}
@@ -390,62 +506,138 @@ function fmt(iso){
          d.toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit'});
 }
 
+/* the party email box mirrors whatever addresses the guests have,
+   unless someone has deliberately typed something else in there */
+function guestEmailsFor(pid, card){
+  const rowsIn = card ? Array.from(card.querySelectorAll('tbody tr')) : [];
+  const list = rowsIn.length
+    ? rowsIn.map(tr => tr.querySelector('[data-g="email"]').value.trim())
+    : partyGuests(pid).map(g => (g.email||'').trim());
+  return list.filter(Boolean).filter((e,i,a) => a.indexOf(e) === i).join(', ');
+}
+
+function wireHead(card, pid){
+  const head = card.querySelector('.a-head');
+  if(!head) return;
+  head.onclick = e => {
+    if(e.target.closest('.a-save')) return;
+    openCards.has(pid) ? openCards.delete(pid) : openCards.add(pid);
+    const body = card.querySelector('.a-body');
+    if(body) body.hidden = !openCards.has(pid);
+  };
+}
+
 function wireCards(){
   $$('#p-guests .a-card').forEach(card => {
     const pid = card.dataset.party;
-    card.querySelector('[data-toggle]').onclick = () => {
-      openCards.has(pid) ? openCards.delete(pid) : openCards.add(pid);
-      renderGuests();
-    };
+    wireHead(card, pid);
+
     const body = card.querySelector('.a-body');
     if(!body) return;
+
+    /* ---- party fields: save themselves ---- */
+    const readParty = () => {
+      const f = k => card.querySelector('[data-f="'+k+'"]');
+      return {
+        party: pid, name: f('name').value, wave: f('wave').value,
+        deadline: f('deadline').value, open: f('open').value === 'yes',
+        emails: f('emails').value, admin: f('admin').value
+      };
+    };
+    body.querySelectorAll('[data-f]').forEach(el => {
+      const ev = el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input';
+      el.addEventListener(ev, () => { draft(pid).party = readParty(); markDirty(pid); });
+    });
+
+    /* ---- guest fields: save themselves, and keep the party emails in step ---- */
+    const wireRow = tr => {
+      const row = Number(tr.dataset.row);
+      const read = () => {
+        const g = k => tr.querySelector('[data-g="'+k+'"]').value;
+        return { row, party: g('party'), first: g('first'), last: g('last'),
+                 email: g('email'), phone: g('phone'), attending: g('attending'),
+                 meal: g('meal'), diet: g('diet') };
+      };
+      tr.querySelectorAll('[data-g]').forEach(el => {
+        const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(ev, () => {
+          draft(pid).guests.set(row, read());
+          if(el.dataset.g === 'email'){
+            const box = card.querySelector('[data-f="emails"]');
+            const mirrored = guestEmailsFor(pid, card);
+            /* only follow along while the box is still just the guest list */
+            if(box && (!box.value.trim() || box.dataset.mirror === '1')){
+              box.value = mirrored;
+              box.dataset.mirror = '1';
+              draft(pid).party = readParty();
+            }
+          }
+          markDirty(pid);
+        });
+      });
+      tr.querySelector('[data-del]').onclick = async () => {
+        if(!confirm('Remove this guest? This cannot be undone.')) return;
+        const d = draft(pid);
+        d.guests.delete(row);
+        d.remove.add(row);
+        tr.remove();
+        markDirty(pid);
+        await flush(pid);
+        renderGuests();
+      };
+    };
+    body.querySelectorAll('tbody tr').forEach(wireRow);
+
+    /* mark the email box as "mirroring" if it already matches the guests */
+    const box = card.querySelector('[data-f="emails"]');
+    if(box && box.value.trim() === guestEmailsFor(pid, card)) box.dataset.mirror = '1';
 
     body.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
       navigator.clipboard.writeText(b.dataset.copy).then(()=>toast('Link copied'),
         ()=>toast('Could not copy, select it by hand', true));
     });
-    body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-      if(!confirm('Remove this guest? This cannot be undone.')) return;
-      await run(() => api('admin.deleteGuest', {row: Number(b.dataset.del)}), 'Guest removed');
-    });
-    body.querySelector('[data-add]').onclick = async () => {
-      await run(() => api('admin.saveGuest', {guest:{party:pid, first:'New', last:'Guest'}}), 'Guest added');
+
+    /* ---- add a guest: nothing already typed is lost, because it is
+            all flushed first and the new row is appended in place ---- */
+    body.querySelector('[data-add]').onclick = async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try{
+        await flush(pid);                               /* keep what is on screen */
+        const before = new Set(partyGuests(pid).map(g => g.row));
+        await api('admin.saveGuest', {guest:{party:pid, first:'', last:''}});
+        const added = partyGuests(pid).find(g => !before.has(g.row));
+        const tbody = card.querySelector('tbody');
+        if(added && tbody){
+          tbody.insertAdjacentHTML('beforeend', guestRow(added));
+          const tr = tbody.lastElementChild;
+          wireRow(tr);
+          const first = tr.querySelector('[data-g="first"]');
+          if(first) first.focus();
+        }else{
+          renderGuests();
+        }
+        refreshCardChrome(pid);
+      }catch(err){ toast(err.message, true); }
+      finally{ btn.disabled = false; }
     };
+
     body.querySelector('[data-delparty]').onclick = async () => {
       if(!confirm('Delete party '+pid+' and every guest in it? This cannot be undone.')) return;
+      pending.delete(pid); clearTimeout(timers.get(pid));
       openCards.delete(pid);
       await run(() => api('admin.deleteParty', {party: pid}), 'Party deleted');
     };
-    body.querySelector('[data-save]').onclick = () => saveCard(card, pid);
-    body.querySelectorAll('[data-mail]').forEach(b => b.onclick = () => {
+    body.querySelectorAll('[data-mail]').forEach(b => b.onclick = async () => {
+      await flush(pid).catch(()=>{});
       tab = 'email'; window.__mailKind = b.dataset.mail; window.__mailTo = [pid];
       renderTabs(); render();
     });
   });
 }
 
-async function saveCard(card, pid){
-  const f = k => card.querySelector('[data-f="'+k+'"]');
-  try{
-    await api('admin.saveParty', {party:{
-      party: pid, name: f('name').value, wave: f('wave').value,
-      deadline: f('deadline').value, open: f('open').value === 'yes',
-      emails: f('emails').value, admin: f('admin').value
-    }});
-    for(const tr of card.querySelectorAll('tbody tr')){
-      const g = k => tr.querySelector('[data-g="'+k+'"]').value;
-      await api('admin.saveGuest', {guest:{
-        row: Number(tr.dataset.row), party: g('party'), first: g('first'), last: g('last'),
-        email: g('email'), phone: g('phone'), attending: g('attending'),
-        meal: g('meal'), diet: g('diet')
-      }});
-    }
-    toast('Saved');
-    renderGuests();
-  }catch(e){ toast(e.message, true); }
-}
-
 async function addParty(){
+  await flushAll();
   const used = new Set((D.parties||[]).map(p => p.party));
   let n = 1; while(used.has(('0000'+n).slice(-4))) n++;
   const pid = ('0000'+n).slice(-4);
@@ -623,7 +815,9 @@ function renderContent(){
         <thead><tr><th>Meal</th><th style="width:70px">Show</th><th></th></tr></thead>
         <tbody>${D.meals.map(rowMeal).join('')}</tbody>
       </table>
-      <p class="a-note" style="margin-top:.8rem">This is the dropdown guests pick from when they RSVP.</p>
+      <p class="a-note" style="margin-top:.8rem">This is the dropdown guests pick from when they RSVP.
+        It is the same list as <b>Meal Options</b> in Settings &mdash; change it in either place and
+        the other follows.</p>
     </div>
 
     <div class="panel">
@@ -683,18 +877,26 @@ function wireRows(){
 /* ============================================================
    CHANGE LOG
    ============================================================ */
-function renderLog(){
+async function renderLog(){
   $('#p-log').innerHTML = `
     <div class="panel">
       <div class="a-bar"><h3 style="margin:0">Change log</h3><span class="grow"></span>
         <input class="a-search" type="text" id="lq" placeholder="Filter"></div>
-      <div id="logList">${D.log.map(logRow).join('') || '<p class="a-note">Nothing logged yet.</p>'}</div>
+      <div id="logList"><div class="spinner" aria-label="Loading"></div></div>
     </div>`;
+
+  /* the log is fetched only when this tab is looked at, which keeps every
+     other request small */
+  if(!D.log){
+    try{ const j = await api('admin.log'); D.log = j.log || []; }
+    catch(e){ $('#logList').innerHTML = '<p class="a-note">Could not load the log.</p>'; return; }
+  }
+  const paint = list => $('#logList').innerHTML =
+    list.map(logRow).join('') || '<p class="a-note">Nothing logged yet.</p>';
+  paint(D.log);
   $('#lq').oninput = e => {
     const q = e.target.value.toLowerCase();
-    $('#logList').innerHTML = D.log.filter(l =>
-      JSON.stringify(l).toLowerCase().includes(q)).map(logRow).join('') ||
-      '<p class="a-note">Nothing matches.</p>';
+    paint(D.log.filter(l => JSON.stringify(l).toLowerCase().includes(q)));
   };
 }
 function logRow(l){

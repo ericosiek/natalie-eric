@@ -49,7 +49,7 @@
      ========================================================== -->
 <header class="nav" id="nav">
   <div class="nav-in">
-    <a href="#welcome" class="nav-mono mono" aria-label="Natalie and Eric, home">
+    <a href="#welcome" class="nav-mono mono" id="navMono" aria-label="Open the invitation">
       <svg width="52" height="28" viewBox="0 0 120 64" aria-hidden="true">
           <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
                 font-size="46" font-weight="300" fill="#3A2E2B" letter-spacing="1">N<tspan
@@ -58,8 +58,8 @@
     </a>
     <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
     <nav class="nav-links" id="navLinks">
-      <a href="#welcome" id="navInvite">Invitation</a>
       <a href="#welcome">Welcome</a>
+      <a href="#venue">The Venue</a>
       <a href="#schedule">Schedule</a>
       <a href="#rsvp">RSVP</a>
       <a href="#faq">FAQ</a>
@@ -102,15 +102,53 @@
 </section>
 
 <!-- ==========================================================
+     THE VENUE
+     ========================================================== -->
+<section id="venue">
+  <div class="wrap">
+    <div class="sec-head rev">
+      <p class="eyebrow">Where we'll be</p>
+      <h2>The Venue</h2>
+      <div class="rule"><i></i></div>
+      <p class="lede">Riverway Clubhouse sits on the water in Burnaby, with the ceremony, dinner and
+        dancing all under one roof, so once you arrive you're set for the whole day.</p>
+    </div>
+
+    <figure class="venue-photo rev">
+      <img src="/images/venue.jpg" width="960" height="640" loading="lazy" decoding="async"
+           alt="Riverway Clubhouse seen across the pond at golden hour, with a fountain to the right">
+    </figure>
+
+    <div class="venue-info rev">
+      <div class="venue-addr">
+        <p class="eyebrow">Address</p>
+        <p class="venue-name" id="mapVenue">Riverway Clubhouse</p>
+        <p class="venue-line" id="mapAddr">9001 Bill Fox Way<br>Burnaby, BC V5J 5J3</p>
+        <p class="venue-note">Free parking on site. The clubhouse is a short drive from Metrotown
+          and about 30 minutes from downtown Vancouver.</p>
+        <p style="margin-top:1.4rem">
+          <a class="btn ghost sm" id="mapLink" target="_blank" rel="noopener"
+             href="https://www.google.com/maps/search/?api=1&amp;query=Riverway+Clubhouse+9001+Bill+Fox+Way+Burnaby+BC">Get directions</a>
+        </p>
+      </div>
+      <div class="map">
+        <iframe title="Map to Riverway Clubhouse" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                src="https://www.google.com/maps?q=Riverway%20Clubhouse%2C%209001%20Bill%20Fox%20Way%2C%20Burnaby%2C%20BC%20V5J%205J3&amp;output=embed"></iframe>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================================
      SCHEDULE
      ========================================================== -->
-<section id="schedule">
+<section class="alt" id="schedule">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">Sunday, July 11, 2027</p>
       <h2>Schedule</h2>
       <div class="rule"><i></i></div>
-      <p class="lede">Everything happens at Riverway Clubhouse in Burnaby, so once you arrive you're set for the day.</p>
+      <p class="lede">How the day unfolds. Add any part of it to your calendar so nothing sneaks up on you.</p>
     </div>
 
     <div class="timeline" id="timeline"></div>
@@ -118,26 +156,13 @@
     <p class="center rev" style="margin-top:2.4rem">
       <button class="btn ghost" id="addAll">Add the full schedule to my calendar</button>
     </p>
-
-    <div class="map rev">
-      <iframe title="Map to Riverway Clubhouse" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
-              src="https://www.google.com/maps?q=Riverway%20Clubhouse%2C%209001%20Bill%20Fox%20Way%2C%20Burnaby%2C%20BC%20V5J%205J3&amp;output=embed"></iframe>
-      <div class="map-foot">
-        <div>
-          <div class="map-name" id="mapVenue">Riverway Clubhouse</div>
-          <div class="map-addr" id="mapAddr">9001 Bill Fox Way, Burnaby, BC V5J 5J3</div>
-        </div>
-        <a class="btn ghost sm" id="mapLink" target="_blank" rel="noopener"
-           href="https://www.google.com/maps/search/?api=1&amp;query=Riverway+Clubhouse+9001+Bill+Fox+Way+Burnaby+BC">Directions</a>
-      </div>
-    </div>
   </div>
 </section>
 
 <!-- ==========================================================
      RSVP
      ========================================================== -->
-<section class="alt" id="rsvp">
+<section id="rsvp">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">Kindly reply</p>
@@ -154,7 +179,7 @@
 <!-- ==========================================================
      FAQ
      ========================================================== -->
-<section id="faq">
+<section class="alt" id="faq">
   <div class="wrap narrow">
     <div class="sec-head rev">
       <p class="eyebrow">Good to know</p>
@@ -788,16 +813,45 @@ const RSVP = {
 /* ============================================================
    CHROME: invitation, nav, reveal
    ============================================================ */
+const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* The invitation doesn't just fade. The seal lifts away, a line of light
+   travels across the card, the card unfolds toward you and dissolves into
+   the page underneath. */
 function closeInvitation(){
   const ov = $("#invitation");
-  ov.classList.add("gone");
-  document.body.style.overflow = "";
+  if(!ov || ov.classList.contains("gone") || ov.classList.contains("opening")) return;
   localStorage.setItem("ne_opened","1");
+
+  if(REDUCED){
+    ov.classList.add("gone");
+    document.body.style.overflow = "";
+    return;
+  }
+
+  ov.classList.add("opening");
+  document.body.style.overflow = "";
+  const done = () => {
+    ov.classList.add("gone");
+    ov.classList.remove("opening");
+  };
+  ov.addEventListener("animationend", function onEnd(e){
+    if(e.target !== ov) return;
+    ov.removeEventListener("animationend", onEnd);
+    done();
+  });
+  setTimeout(done, 1700);   /* belt and braces if the animation never fires */
 }
+
 function showInvitation(){
   const ov = $("#invitation");
-  ov.classList.remove("gone");
+  if(!ov) return;
+  ov.classList.remove("gone","opening");
+  /* restart the entrance animation on the card */
+  const card = ov.querySelector(".card-invite");
+  if(card && !REDUCED){ card.style.animation = "none"; void card.offsetWidth; card.style.animation = ""; }
   document.body.style.overflow = "hidden";
+  window.scrollTo({top:0, behavior: REDUCED ? "auto" : "smooth"});
   setTimeout(()=>{ const b = $("#openInvite"); if(b) b.focus(); }, 300);
 }
 function initInvitation(){
@@ -823,14 +877,14 @@ function initNav(){
   $$("#navLinks a").forEach(a=> a.addEventListener("click", ()=>{
     links.classList.remove("open"); toggle.setAttribute("aria-expanded","false");
   }));
-  const inv = $("#navInvite");
-  if(inv) inv.addEventListener("click", e=>{ e.preventDefault(); showInvitation(); });
+  const mono = $("#navMono");
+  if(mono) mono.addEventListener("click", e=>{ e.preventDefault(); showInvitation(); });
 
   const onScroll = ()=> nav.classList.toggle("stuck", window.scrollY > 12);
   onScroll(); window.addEventListener("scroll", onScroll, {passive:true});
 
   // scrollspy
-  const secs = ["welcome","schedule","rsvp","faq","registry"]
+  const secs = ["welcome","venue","schedule","rsvp","faq","registry"]
     .map(id=>({id, el:document.getElementById(id)})).filter(s=>s.el);
   const spy = new IntersectionObserver(entries=>{
     entries.forEach(en=>{

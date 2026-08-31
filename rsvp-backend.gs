@@ -67,10 +67,12 @@ function doPost(e){
     if(!validSession(b.token))    return json({ok:false, error:'Your session expired. Please sign in again.', reauth:true});
 
     switch(a){
-      case 'admin.data':        return json({ok:true, data:adminData()});
+      case 'admin.data':        adoptSheetEdits(); return json({ok:true, data:adminData(b.light)});
+      case 'admin.log':         return json({ok:true, log:readLog()});
       case 'admin.saveGuest':   return json(adminSaveGuest(b));
       case 'admin.deleteGuest': return json(adminDeleteGuest(b));
       case 'admin.saveParty':   return json(adminSaveParty(b));
+      case 'admin.savePartyBundle': return json(adminSavePartyBundle(b));
       case 'admin.deleteParty': return json(adminDeleteParty(b));
       case 'admin.saveRows':    return json(adminSaveRows(b));
       case 'admin.saveConfig':  return json(adminSaveConfig(b));
@@ -484,7 +486,117 @@ function notifyRsvp(party, body, isUpdate, changes){
    ADMIN: read everything the portal needs in one call
    ========================================================================== */
 
-function adminData(){
+/* ==========================================================================
+   ADOPT WHATEVER WAS TYPED STRAIGHT INTO THE SHEET
+
+   Natalie and Eric can add rows to the Guests tab by hand, which is much
+   faster than the portal for a long list. This runs before every admin read
+   and quietly finishes the job: gives each guest an id, creates any party a
+   guest refers to, and gives every party a name, a link code and an invite
+   link. New parties come in CLOSED, exactly like ones made in the portal, so
+   a hand-typed row can never leak into an earlier invite wave.
+
+   It only writes when something is actually missing, so the normal case
+   costs one read and nothing else.
+   ========================================================================== */
+function adoptSheetEdits(){
+  var wrote = false;
+
+  /* --- guests: fill in ids, remember which parties are referenced --- */
+  var gs = sheet(SH.GUESTS), gv = rows(SH.GUESTS), referenced = {};
+  for(var i=0;i<gv.length;i++){
+    var r = gv[i], row = i+2;
+    var name = (String(r[G.FIRST]||'').trim()+' '+String(r[G.LAST]||'').trim()).trim();
+    if(!name) continue;
+
+    var party = pad(r[G.PARTY]);
+    if(!party){
+      /* a guest typed with no party number gets one of their own */
+      party = nextPartyId(referenced);
+      gs.getRange(row, G.PARTY+1).setNumberFormat('@').setValue(party);
+      wrote = true;
+    } else if(String(r[G.PARTY]) !== party){
+      gs.getRange(row, G.PARTY+1).setNumberFormat('@').setValue(party);   /* 1 -> 0001 */
+      wrote = true;
+    }
+    referenced[party] = true;
+
+    if(!String(r[G.GID]||'').trim()){
+      gs.getRange(row, G.GID+1).setNumberFormat('@')
+        .setValue('g-' + party + '-' + Utilities.getUuid().slice(0,6));
+      wrote = true;
+    }
+  }
+
+  /* --- parties: create the missing ones, finish the incomplete ones --- */
+  var ps = sheet(SH.PARTIES), pv = rows(SH.PARTIES), seen = {}, used = {};
+  for(var j=0;j<pv.length;j++){
+    var pr = pv[j], prow = j+2;
+    var pid = pad(pr[P.PARTY]);
+    if(!pid) continue;
+    if(String(pr[P.PARTY]) !== pid){
+      ps.getRange(prow, P.PARTY+1).setNumberFormat('@').setValue(pid);
+      wrote = true;
+    }
+    seen[pid] = true;
+    if(pr[P.TOKEN]) used[String(pr[P.TOKEN])] = true;
+
+    if(!String(pr[P.NAME]||'').trim()){
+      ps.getRange(prow, P.NAME+1).setNumberFormat('@').setValue('Party ' + pid);
+      wrote = true;
+    }
+    if(!String(pr[P.TOKEN]||'').trim()){
+      var t; do { t = newToken(); } while(used[t]);
+      used[t] = true;
+      ps.getRange(prow, P.TOKEN+1).setNumberFormat('@').setValue(t);
+      ps.getRange(prow, P.LINK+1).setNumberFormat('@').setValue(siteUrl() + '/?i=' + t);
+      wrote = true;
+    } else if(!String(pr[P.LINK]||'').trim()){
+      ps.getRange(prow, P.LINK+1).setNumberFormat('@')
+        .setValue(siteUrl() + '/?i=' + String(pr[P.TOKEN]).trim());
+      wrote = true;
+    }
+    if(pr[P.OPEN] !== true && pr[P.OPEN] !== false){
+      ps.getRange(prow, P.OPEN+1).insertCheckboxes();
+      ps.getRange(prow, P.OPEN+1).setValue(false);        /* closed until invited */
+      wrote = true;
+    }
+    if(pr[P.WAVE] === '' || pr[P.WAVE] === null){
+      ps.getRange(prow, P.WAVE+1).setValue(1);
+      wrote = true;
+    }
+  }
+
+  /* a guest can name a party that has no row yet; make it */
+  for(var key in referenced){
+    if(!seen[key]){ ensureParty(key); wrote = true; }
+  }
+
+  if(wrote){ SpreadsheetApp.flush(); refreshPartyMetrics(); }
+  return wrote;
+}
+
+function readLog(){
+  return rows(SH.LOG).slice(-400).reverse().map(function(r){
+    return { when: r[0] ? new Date(r[0]).toISOString() : '', party:pad(r[1]),
+             guest:String(r[2]||''), field:String(r[3]||''),
+             from:String(r[4]||''), to:String(r[5]||''), by:String(r[6]||'') };
+  });
+}
+
+function nextPartyId(extra){
+  var used = {};
+  rows(SH.PARTIES).forEach(function(r){ var p = pad(r[P.PARTY]); if(p) used[p] = true; });
+  rows(SH.GUESTS).forEach(function(r){ var p = pad(r[G.PARTY]); if(p) used[p] = true; });
+  for(var k in (extra||{})) used[k] = true;
+  var n = 1, id;
+  do { id = ('0000'+n).slice(-4); n++; } while(used[id]);
+  return id;
+}
+
+/* adminData(light) — light skips the change log, which is by far the biggest
+   part of the payload and is only ever looked at on its own tab. */
+function adminData(light){
   var guests = rows(SH.GUESTS).map(function(r, i){
     return { row:i+2, party:pad(r[G.PARTY]), first:String(r[G.FIRST]||''),
              last:String(r[G.LAST]||''), email:String(r[G.EMAIL]||''),
@@ -506,16 +618,12 @@ function adminData(){
              admin:String(r[P.ADMIN]||'') };
   }).filter(function(p){ return p.party; });
 
-  var log = rows(SH.LOG).slice(-400).reverse().map(function(r){
-    return { when: r[0] ? new Date(r[0]).toISOString() : '', party:pad(r[1]),
-             guest:String(r[2]||''), field:String(r[3]||''),
-             from:String(r[4]||''), to:String(r[5]||''), by:String(r[6]||'') };
-  });
+  var log = light ? null : readLog();
 
   return {
     guests:   guests,
     parties:  parties,
-    log:      log,
+    log:      log,      /* null when light; the Change log tab asks for it */
     schedule: rows(SH.SCHEDULE).map(function(r,i){
                 return { row:i+2, order:r[0], start:String(r[1]||''), end:String(r[2]||''),
                          title:String(r[3]||''), place:String(r[4]||''),
@@ -598,7 +706,7 @@ function adminSaveGuest(b){
   }
 
   refreshPartyMetrics();
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
 }
 
 function adminDeleteGuest(b){
@@ -609,7 +717,7 @@ function adminDeleteGuest(b){
   logChange(pad(cur[G.PARTY]), name, 'Guest removed', name, '', 'admin');
   s.deleteRow(row);
   refreshPartyMetrics();
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
 }
 
 function firstFreeRow(s, col){
@@ -674,7 +782,24 @@ function adminSaveParty(b){
     s.getRange(row, P.LINK+1).setValue(siteUrl() + '/?i=' + t);
   }
   refreshPartyMetrics();
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
+}
+
+/* ==========================================================================
+   ONE ROUND TRIP FOR A WHOLE PARTY CARD
+
+   The portal used to save the party and then each guest in turn, which meant
+   a separate call to Apps Script per person and a very slow card. This takes
+   the lot in one request.
+   ========================================================================== */
+function adminSavePartyBundle(b){
+  var out = {ok:true};
+  if(b.party) adminSaveParty({party:b.party, light:true});
+  (b.guests || []).forEach(function(g){ adminSaveGuest({guest:g, light:true}); });
+  (b.remove || []).forEach(function(row){ adminDeleteGuest({row:row, light:true}); });
+  refreshPartyMetrics();
+  out.data = adminData(true);
+  return out;
 }
 
 function adminDeleteParty(b){
@@ -685,7 +810,7 @@ function adminDeleteParty(b){
   if(row) sheet(SH.PARTIES).deleteRow(row);
   logChange(id, '', 'Party removed', id, '', 'admin');
   refreshPartyMetrics();
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
 }
 
 /* Rebuilds the live count formulas on every party row. */
@@ -738,16 +863,54 @@ function adminSaveRows(b){
       s.getRange(2, flagCol, list.length, 1).setValues(list.map(function(r){ return [r.visible !== false]; }));
     }
   }
+  if(b.table === 'meals') syncMealsToConfig();
   logChange('', '', b.table + ' updated', '', list.length + ' rows', 'admin');
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
+}
+
+/* ==========================================================================
+   MEALS: the Meals tab and the "Meal Options" setting are the same thing,
+   so editing either one rewrites the other. The Meals tab is the richer of
+   the two (it has a Show checkbox), so it wins when both could apply.
+   ========================================================================== */
+function mealList(){
+  return rows(SH.MEALS)
+    .filter(function(r){ return String(r[1]).trim() && isTrue(r[2]); })
+    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
+    .map(function(r){ return String(r[1]).trim(); });
+}
+function syncMealsToConfig(){
+  setCfg('Meal Options', mealList().join(', '));
+}
+function syncConfigToMeals(text){
+  var wanted = String(text||'').split(',').map(function(x){ return x.trim(); }).filter(String);
+  var have = rows(SH.MEALS).map(function(r){ return String(r[1]).trim(); });
+  /* nothing to do if the two already agree */
+  var visible = mealList();
+  if(visible.length === wanted.length && visible.every(function(m,i){ return m === wanted[i]; })) return;
+
+  var s = sheet(SH.MEALS), last = s.getMaxRows();
+  if(last > 1) s.getRange(2,1,last-1,3).clearContent();
+  if(wanted.length){
+    s.getRange(2,1,wanted.length,3).setValues(wanted.map(function(m,i){ return [i+1, m, true]; }));
+    s.getRange(2,3,wanted.length,1).insertCheckboxes();
+    s.getRange(2,3,wanted.length,1).setValues(wanted.map(function(){ return [true]; }));
+  }
 }
 
 function adminSaveConfig(b){
+  var meals = null;
   (b.config || []).forEach(function(c){
-    if(String(c.key||'').trim()) setCfg(c.key, c.value);
+    var k = String(c.key||'').trim();
+    if(!k) return;
+    if(k === 'Meal Options'){ meals = c.value; return; }   /* handled below */
+    setCfg(k, c.value);
   });
+  /* editing Meal Options here rewrites the Meals tab, then we read it back
+     so the two can never drift apart */
+  if(meals !== null){ syncConfigToMeals(meals); syncMealsToConfig(); }
   logChange('', '', 'Settings updated', '', '', 'admin');
-  return {ok:true, data:adminData()};
+  return {ok:true, data:adminData(b.light)};
 }
 
 /* ==========================================================================
@@ -887,7 +1050,7 @@ function adminSend(b){
   });
 
   SpreadsheetApp.flush();
-  return {ok:true, sent:sent, skipped:skipped, failed:failed, data:adminData()};
+  return {ok:true, sent:sent, skipped:skipped, failed:failed, data:adminData(true)};
 }
 
 /* ==========================================================================
@@ -1026,7 +1189,7 @@ function setup(){
     t.getRange(1,1,1,3).setValues([['Key','Subject','Body']]);
     t.getRange(2,1,3,3).setValues([
       ['invite', "You're invited to Natalie & Eric's wedding",
-       "Dear {{names}},\n\nTogether with our families, we would love for you to join us as we get married on Sunday, July 11th 2027 at Riverway Clubhouse in Burnaby.\n\nEverything you need is on our website, and the link below is unique to your party, so you can RSVP for everyone in it.\n\n[[Open Invitation]]\n\nWe cannot wait to celebrate with you.\n\nWith love,\nNatalie & Eric"],
+       "Dear {{names}},\n\nTogether with our families, we would love for you to join us as we get married on Sunday, July 11th 2027 at Riverway Clubhouse in Burnaby, BC.\n\nEverything you need is on our website, and the link below is unique to your party, so you can RSVP for everyone in it.\n\n[[Open Invitation]]\n\nWe cannot wait to celebrate with you.\n\nWith love,\nNatalie & Eric"],
       ['reminder', 'A gentle nudge about our wedding RSVP',
        "Dear {{names}},\n\nWe are starting to firm up numbers for July 11th and noticed we have not heard from you yet. Whenever you have a moment, your RSVP link is below.\n\n[[RSVP Here]]\n\nNo rush at all, and please just reply to this email if anything is unclear.\n\nWith love,\nNatalie & Eric"],
       ['thanks', 'Thank you',
