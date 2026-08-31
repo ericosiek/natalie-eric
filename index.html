@@ -124,8 +124,8 @@
         <p class="eyebrow">Address</p>
         <p class="venue-name" id="mapVenue">Riverway Clubhouse</p>
         <p class="venue-line" id="mapAddr">9001 Bill Fox Way<br>Burnaby, BC V5J 5J3</p>
-        <p class="venue-note">Free parking on site. The clubhouse is a short drive from Metrotown
-          and about 30 minutes from downtown Vancouver.</p>
+        <p class="venue-note">Parking on site is limited, so we recommend taking an Uber or Lyft.
+          The ceremony is outdoors and the reception is indoors, so you're covered either way.</p>
         <p style="margin-top:1.4rem">
           <a class="btn ghost sm" id="mapLink" target="_blank" rel="noopener"
              href="https://www.google.com/maps/search/?api=1&amp;query=Riverway+Clubhouse+9001+Bill+Fox+Way+Burnaby+BC">Get directions</a>
@@ -580,9 +580,14 @@ const RSVP = {
   /* --- boot ------------------------------------------------- */
   async init(){
     const qs = new URLSearchParams(location.search);
+    /* A party only loads from a link the guest actually opened, or from a
+       lookup they did in this tab. It is deliberately NOT remembered across
+       visits: on a shared computer that would show one household's answers
+       to whoever opened the page next. */
+    try{ localStorage.removeItem("ne_token"); }catch(e){}
     this.token = qs.get("i") || qs.get("p") || qs.get("party")
-              || localStorage.getItem("ne_token") || null;
-    if(this.token) localStorage.setItem("ne_token", this.token);
+              || sessionStorage.getItem("ne_token") || null;
+    if(this.token){ try{ sessionStorage.setItem("ne_token", this.token); }catch(e){} }
 
     if(!this.token){ this.renderLookup(); return; }
     await this.load();
@@ -652,7 +657,9 @@ const RSVP = {
               '<span class="lk-names">'+esc((m.members||[]).join(", "))+'</span>'+
             '</button>').join("");
         $$("#lkOut button").forEach(b=> b.addEventListener("click", ()=>{
-          this.token = b.dataset.t; localStorage.setItem("ne_token", this.token); this.load();
+          this.token = b.dataset.t;
+          try{ sessionStorage.setItem("ne_token", this.token); }catch(e){}
+          this.load();
         }));
       }catch(e){
         $("#lkOut").innerHTML = '<div class="notice error">Something went wrong. Please try again.</div>';
