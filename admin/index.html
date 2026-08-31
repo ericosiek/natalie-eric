@@ -67,7 +67,11 @@ table.a-t{width:100%;border-collapse:collapse;font-size:.95rem}
 .a-t td{padding:.45rem .55rem;border-bottom:1px solid var(--line-soft);vertical-align:middle}
 .a-t tr:last-child td{border-bottom:0}
 .a-t input,.a-t select{padding:.5rem .6rem;font-size:.95rem}
-.a-t input[type=text],.a-t input[type=email]{min-width:90px}
+.a-t input[type=text],.a-t input[type=email]{min-width:80px}
+.a-t select{padding-right:2.1rem;background-position:right .7rem center}
+/* the guest table needs a little room; let it scroll on a narrow screen */
+.a-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.a-scroll .a-t{min-width:940px}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem}
@@ -330,7 +334,11 @@ function partyCard(p){
         <button class="btn ghost tiny" data-copy="${h(p.link)}">Copy</button>
       </div>
 
+      <div class="a-scroll">
       <table class="a-t">
+        <colgroup><col style="width:11%"><col style="width:11%"><col style="width:16%">
+          <col style="width:13%"><col style="width:11%"><col style="width:14%">
+          <col style="width:14%"><col style="width:7%"><col style="width:3%"></colgroup>
         <thead><tr><th>First</th><th>Last</th><th>Email</th><th>Phone</th>
           <th>RSVP</th><th>Meal</th><th>Dietary</th><th>Party</th><th></th></tr></thead>
         <tbody>
@@ -356,6 +364,7 @@ function partyCard(p){
           </tr>`).join('')}
         </tbody>
       </table>
+      </div>
 
       <div class="a-bar" style="margin:1.3rem 0 0">
         <button class="btn ghost sm" data-add>Add a guest</button>

@@ -1,203 +1,125 @@
-# Setup & operating guide
+# Natalie & Eric — how the website works
 
-Everything you need to run the site, in the order it has to happen.
+Everything lives in three places.
 
----
+| Piece | Where | What it does |
+|---|---|---|
+| The website | GitHub repo `ericosiek/natalie-eric`, served free by GitHub Pages at **natalie-eric.website** | The pages guests see |
+| The backend | A Google Apps Script attached to the RSVP spreadsheet | Answers the website, sends the emails, keeps the log |
+| The data | That same Google Sheet | Guests, parties, schedule, FAQ, meals, settings, change log |
 
-## 1. GitHub Pages
-
-Repo: `ericosiek/natalie-eric` · Branch: `main` · Folder: `/ (root)`
-
-**Settings → Pages**
-- Source: **Deploy from a branch**
-- Branch: **main**, folder **/ (root)**
-- Custom domain: `natalie-eric.website`
-- Tick **Enforce HTTPS** (it stays greyed out until the DNS below resolves, usually
-  within an hour, sometimes up to 24)
-
-The `CNAME` file in the repo sets the custom domain too, so if the field ever
-empties itself, pushing again restores it.
+You never have to touch any of it directly. The admin portal covers day-to-day work,
+and Claude covers changes to the pages themselves.
 
 ---
 
-## 2. Namecheap DNS
+## The admin portal
 
-**Domain List → natalie-eric.website → Manage → Advanced DNS**
+**natalie-eric.website/admin** — username `wedding`, password `venables2026`.
 
-Delete any parking records Namecheap added by default (usually a CNAME on `www`
-pointing at `parkingpage.namecheap.com`, and sometimes an A record on `@`).
+A sign-in lasts 12 hours. Six wrong passwords in a row locks the door for 15 minutes.
 
-Then add exactly these six records:
+### Guests & parties
+Every household is a **party** with a four-digit number and its own private link.
+Open a party card to edit names, emails, phones, RSVP answers, meals and dietary notes,
+or to move someone into a different party by typing a different number in their Party box.
 
-| Type | Host | Value | TTL |
-|---|---|---|---|
-| A Record | `@` | `185.199.108.153` | Automatic |
-| A Record | `@` | `185.199.109.153` | Automatic |
-| A Record | `@` | `185.199.110.153` | Automatic |
-| A Record | `@` | `185.199.111.153` | Automatic |
-| CNAME Record | `www` | `ericosiek.github.io.` | Automatic |
-| ALIAS/other | *(none needed)* | | |
+Each card also has:
 
-Note the trailing dot on `ericosiek.github.io.` — Namecheap wants it.
+- **Invite wave** — a number. Wave 1 goes out first, wave 2 later. Cosmetic grouping for you.
+- **RSVP deadline** — optional, per party. Overrides the global one in Settings.
+- **RSVP open** — the lock. Closed means the website will not accept their reply and,
+  importantly, they cannot be found by the last-name search at all.
+- **Private note** — never shown to guests.
+- **Send invitation** / **Send reminder** — jumps to the Email tab with that party selected.
 
-Make sure **Nameservers** at the top of that page is set to **Namecheap BasicDNS**,
-not "Custom DNS". Nothing else on the page needs touching.
+New parties are created **closed**. Sending the invitation is what opens them.
 
-DNS usually propagates in 15 to 60 minutes. `natalie-eric.website` and
-`www.natalie-eric.website` will both work; GitHub redirects between them.
+### Email
+Pick a template (invitation, reminder, thank-you) or write your own. The tokens are:
 
----
+- `{{names}}` first names of the party
+- `{{name}}` party name
+- `{{link}}` their own RSVP link
+- `{{deadline}}` their deadline
 
-## 3. The RSVP spreadsheet
+Put `[[Open Invitation]]` on its own line and it becomes a button linking to their party.
 
-Sheet: **Natalie & Eric — Wedding RSVPs** (in Eric's Google Drive)
+The preview on the right is rendered by the server using the first party you have ticked,
+so what you see is exactly what lands in their inbox — real names, real link.
 
-1. **Extensions → Apps Script**
-2. Delete whatever is in `Code.gs`, paste the whole of `rsvp-backend.gs`, save.
-3. Run `setup()` once. Google will ask for permission the first time: choose your
-   account, click **Advanced → Go to (project) (unsafe)** — that warning is normal
-   for a script you wrote yourself — then **Allow**.
-4. **Deploy → New deployment → Web app**
-   - Description: `RSVP API`
-   - Execute as: **Me**
-   - Who has access: **Anyone**
-   - Deploy, then copy the **Web app URL**. It ends in `/exec`.
-5. Paste that URL into `CONFIG.apiUrl` in `index.html` and push.
+Select parties with the filter buttons: all, none, not yet invited, invited but no reply,
+missing an email.
 
-### Redeploying after a script change
+Everything is sent from **natalie.eric.2027@gmail.com**.
 
-**Deploy → Manage deployments → (pencil icon) → Version: New version → Deploy.**
-This keeps the same URL. Creating a *new deployment* instead gives you a new URL
-and would break the site, so always edit the existing one.
+### Site content
+The schedule, the meal choices and the FAQ. Save, and the website picks them up on the
+next page load. Untick **Show** to hide a row without deleting it.
 
----
+### Change log
+Every change to an RSVP, by a guest or by you, with what it was and what it became.
 
-## 4. Adding guests
+### Settings
+Global switches. The one that matters most is **RSVP Open** — a master off switch that
+closes RSVPs for everyone regardless of the individual party settings.
 
-In the **Guests** tab, one row per person:
-
-| Party | First Name | Last Name | Email | Phone |
-|---|---|---|---|---|
-| 0037 | Wei | Chen | wei@example.com | |
-| 0037 | Mei | Chen | mei@example.com | |
-| 0037 | Lily | Chen | | |
-
-Party numbers are text, so keep the leading zeros. Everyone sharing a number can
-RSVP for each other.
-
-Then **Wedding → Refresh parties & links** in the spreadsheet menu bar. Each party
-gets a row in **Parties** with its own link in column E, and RSVP Open ticked.
-
-### Sending the links
-
-- **Email:** put addresses in the Email(s) column of Parties, then
-  **Wedding → Email invites to new parties**. Only parties with an empty
-  "Invite Sent" cell get mailed, so it is safe to re-run after adding more guests.
-- **WhatsApp / iMessage:** **Wedding → Build invite text**. That creates an
-  **Invite Text** tab with a ready-written message per party plus a one-click
-  WhatsApp link and an iMessage/SMS link.
+The admin password is deliberately **not** editable here. It lives in the Apps Script
+project (Project Settings → Script properties → `ADMIN_PASSWORD`).
 
 ---
 
-## 5. Opening and closing RSVPs
+## Invite waves, and why they stay private
 
-- **One party:** tick / untick **RSVP Open** on their row in the **Parties** tab.
-- **Everyone:** set `RSVP Open` to `FALSE` on the **Config** tab.
+A guest who has not been invited yet searches their last name and gets the same
+"we couldn't find that" as someone who mistyped. They cannot tell that other people
+were invited first, because closed parties are invisible to the search — not hidden,
+genuinely absent from the answer.
 
-Both take effect immediately. A guest with the page already open still cannot
-submit once you close them; the server checks on every save, not just on load.
-
-**Extending the deadline** is just leaving parties ticked, or ticking them back on.
-The date on the Config tab is only what the website *says*; it does not lock
-anything by itself.
-
-**A second batch of invites later:** add the rows, refresh parties, email them.
-Existing parties and their links are never disturbed.
+So a later wave is just: add the parties, leave them closed, and send their invitations
+when you're ready.
 
 ---
 
-## 6. Config tab reference
+## Making changes to the pages
 
-| Setting | What it does |
-|---|---|
-| RSVP Open | Master switch. FALSE closes RSVPs for everyone. |
-| RSVP Deadline | Blank shows "at your earliest convenience". Otherwise `yyyy-mm-dd`. |
-| Meal Options | Comma separated. Changes the dropdown on the site. |
-| Site URL | Used to build the invite links. |
-| Notify Email | Where RSVP alerts go. Blank falls back to Send As. |
-| Notify On RSVP | FALSE stops the alert emails. |
-| Send As | The Gmail alias every email goes out from: `natalie.eric.2027@gmail.com`. It must stay a verified alias on the account, otherwise mail silently falls back to the account's own address. |
+Ask Claude. For example:
 
----
+- "Change the cocktail hour to 5:30 and push it live"
+- "Add a question to the FAQ about parking"
+- "Make the invitation say something different"
 
-## 7. Stripe registry
+Claude edits the files, commits them and pushes. GitHub Pages rebuilds in about a minute.
 
-Each gift is a Payment Link. They are reusable, so ten people can each buy the
-same $50 gift and it simply adds $50 ten times. The honeymoon fund uses Stripe's
-customer-chooses-the-amount option.
-
-Links live in the `CONFIG.registry` array in `index.html`. Replace each `"#"` with
-the Payment Link URL and push; a tile with `"#"` shows as "Coming soon" rather
-than breaking.
+Small things — schedule times, FAQ wording, meal options — are faster to do yourself in
+the admin portal's Site content tab.
 
 ---
 
-## 8. Email identity
+## If something needs doing by hand
 
-Everything the site and the script send uses **natalie.eric.2027@gmail.com**, not Eric's
-personal address:
+**Redeploying the backend after a code change.** In the Apps Script editor:
+Deploy → Manage deployments → pencil icon → Version: **New version** → Deploy.
+That keeps the same URL. Choosing "New deployment" instead mints a new URL and breaks
+the site until the new one is pasted into `index.html` and `admin/index.html`.
 
-- the mailto links on the site (RSVP help, FAQ, registry e-transfer, footer)
-- the invitation emails from **Wedding → Email invites to new parties**
-- the RSVP notification that lands when a guest replies
-
-The script sends through `GmailApp` with the alias in the `from` field, which Gmail only
-permits for a **verified alias**. If that alias is ever removed from the account, mail keeps
-sending but reverts to the account's own address, so leave it in place under
-**Gmail → Settings → Accounts → Send mail as**.
+**The sheet.** "Open the sheet" in the admin portal takes you there. Editing it directly
+works — the website reads it live — but the admin portal is safer because it logs
+what changed.
 
 ---
 
-## 9. The registry page
+## Files in the repo
 
-The registry lives at **natalie-eric.website/registry** as its own page
-(`registry/index.html`). The home page keeps a short teaser that links to it.
-
-Every gift is defined in the `REGISTRY` object at the top of that file's `<script>`:
-
-```js
-{ id:"pot", name:"A cast iron dutch oven", amount:150, art:"pot",
-  note:"For the slow Sunday cooking we keep promising ourselves.", url:"#" }
+```
+index.html          the main page: invitation, schedule, RSVP, FAQ
+registry/index.html the Honeymoon Fund page
+admin/index.html    the admin portal
+styles.css          shared styling
+rsvp-backend.gs      the Apps Script source, kept here so changes are tracked
+CNAME               the custom domain
 ```
 
-- `amount` — a number shows as `$150`; `null` shows as "Any amount" (the two funds).
-- `art` — which line illustration to use. The drawings live in the `ART` object just below.
-  Available: `plane house toast bed espresso pot knife plates linen crystal suitcase sun whisk`.
-- `url` — the Stripe Payment Link. Left as `"#"` the tile shows **Coming soon** rather than a
-  dead button, so it is always safe to publish before the links exist.
-
-`REGISTRY.funds` renders as two wide cards at the top; `REGISTRY.gifts` fills the grid below.
-
-### Wiring up Stripe
-
-For each gift, create a **Payment Link** in Stripe (Product → one-time price → Payment link).
-Two settings matter:
-
-- **Honeymoon Fund and Home Fund**: turn on *"Let customers choose what they pay"* so any
-  amount works.
-- **Every link**: set the confirmation page to
-  `https://natalie-eric.website/registry/?checkout=success`, which brings the guest back to the
-  registry and shows the thank-you note.
-
-Payment Links are reusable by design, so ten people can each buy the same $150 gift and it
-simply adds $150 ten times. Nothing sells out.
-
-### Pix
-
-The Pix panel at the bottom is a placeholder. Send the Pix key and the account holder's name
-and it becomes a proper panel with the key, a copy button and a QR code.
-
-### Shared stylesheet
-
-Both pages now load `/styles.css`. Editing a colour or a font there changes the whole site at
-once. It is the only file both pages depend on, so do not rename it.
+`rsvp-backend.gs` in the repo is the source of truth for the backend. When it changes it
+has to be pasted into the Apps Script editor and redeployed — the repo copy is not live
+by itself.
