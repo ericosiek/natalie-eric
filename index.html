@@ -947,11 +947,18 @@ const INV = {
     if(btn) btn.disabled = true;
     this.state("opening");
     this._t1 = setTimeout(()=> this.state("peek"), 1250);
-    this._t2 = setTimeout(()=>{ this.state("rising"); this.fitScene(); }, 1950);
+    this._t2 = setTimeout(()=> this.state("rising"), 1950);
+    /* Once the envelope has faded there is nothing left to pass through, so
+       the letter is free to open out and the scene grows to hold it. */
     this._t3 = setTimeout(()=>{
+      const scene = document.querySelector(".env-scene");
+      if(scene) scene.style.clipPath = "none";
+      this.fitScene();
+    }, 2560);
+    this._t4 = setTimeout(()=>{
       this.state("open");
       if(btn){ btn.disabled = false; btn.textContent = "Enter our website"; btn.focus(); }
-    }, 3150);
+    }, 3500);
   },
 
   leave(){
@@ -997,14 +1004,25 @@ const INV = {
     /* pin the scene to the envelope's own height so the later growth is a
        plain pixel-to-pixel transition rather than a jump */
     scene.style.height = Math.round(sceneH) + "px";
+
+    /* Sit the sealed envelope in the middle of the screen and leave it there.
+       The stage grows downward from this point when the letter comes out, so
+       the envelope itself never shifts. */
+    const cta = document.querySelector(".env-cta");
+    const stageH = sceneH + (cta ? cta.offsetHeight + parseFloat(getComputedStyle(cta).marginTop || 0) : 0);
+    const room = window.innerHeight - stageH;
+    st.style.marginTop = Math.max(0, Math.round(room / 2) - Math.round(window.innerHeight * 0.03)) + "px";
   },
 
   reset(){
     const ov = $("#invitation"), btn = $("#openInvite");
     if(!ov) return;
-    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
+    clearTimeout(this._t1); clearTimeout(this._t2);
+    clearTimeout(this._t3); clearTimeout(this._t4);
     const scene = document.querySelector(".env-scene");
-    if(scene) scene.style.height = "";
+    if(scene){ scene.style.height = ""; scene.style.clipPath = ""; }
+    const stg = this.stage();
+    if(stg) stg.style.marginTop = "";
     ov.classList.remove("gone");
     this.state("sealed");
     this.fitSealed();
