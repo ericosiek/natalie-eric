@@ -21,40 +21,60 @@
      INVITATION  (first thing a guest sees when the link opens)
      ========================================================== -->
 <div id="invitation" role="dialog" aria-modal="true" aria-label="Wedding invitation">
- <div class="env-stage">
-  <div class="card-invite">
-    <div class="seal">
-      <span class="mono" aria-hidden="true">
-        <svg width="64" height="34" viewBox="0 0 120 64" aria-hidden="true">
-          <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
-                font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
-                font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
-        </svg>
-      </span>
+ <!-- Starts as a sealed envelope. Open it and the flap lifts, the letter
+      slides out and settles at full size to be read; a second press puts
+      the invitation away and takes you into the site. -->
+ <div class="env-stage" id="envStage" data-state="sealed">
+
+  <div class="env-scene">
+    <!-- the envelope keeps its own shape and stays put at the bottom of the
+         scene; only the letter moves -->
+    <div class="env-shell" aria-hidden="true">
+      <div class="env-body"></div>
     </div>
 
-    <p class="eyebrow">Together with their families</p>
-    <h1 class="invite-names">Natalie<span class="invite-amp">&amp;</span>Eric</h1>
-    <p class="invite-greet" id="inviteGreet">request the pleasure of your company</p>
-    <div class="rule tight"><i></i></div>
-    <p class="invite-meta">
-      Sunday, July 11th 2027<br>
-      Riverway Clubhouse &middot; Burnaby, BC
-    </p>
-    <p style="margin-top:2.1rem"><button class="btn" id="openInvite">Open Invitation</button></p>
+    <div class="env-letter">
+      <div class="card-invite">
+        <div class="seal">
+          <span class="mono" aria-hidden="true">
+            <svg width="64" height="34" viewBox="0 0 120 64" aria-hidden="true">
+              <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+                    font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
+                    font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+            </svg>
+          </span>
+        </div>
+
+        <div class="invite-parents">
+          <span>Mary &amp; David Wong</span>
+          <span>Yael &amp; Victor Osiek</span>
+        </div>
+
+        <p class="eyebrow">Together with their families</p>
+        <h1 class="invite-names">Natalie<span class="invite-amp">&amp;</span>Eric</h1>
+        <p class="invite-greet" id="inviteGreet">request the pleasure of your company</p>
+        <div class="rule tight"><i></i></div>
+        <p class="invite-meta">
+          Sunday, July 11th 2027<br>
+          Riverway Clubhouse &middot; Burnaby, BC
+        </p>
+      </div>
+    </div>
+
+    <div class="env-shell front" aria-hidden="true">
+      <div class="env-front"></div>
+      <div class="env-flap"></div>
+    </div>
+    <div class="env-seal" aria-hidden="true">
+      <svg width="44" height="25" viewBox="0 0 120 64" aria-hidden="true">
+        <text x="60" y="46" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+              font-size="42" font-weight="300" fill="#F6E7DF" letter-spacing="1">N<tspan
+              font-size="30" font-style="italic" fill="#EBD3C8" dx="3">&amp;</tspan><tspan dx="3">E</tspan></text>
+      </svg>
+    </div>
   </div>
 
-  <!-- The envelope only appears for the opening animation. The body sits
-       behind the card; the flap and the wax seal sit in front of it. -->
-  <div class="env-body" aria-hidden="true"></div>
-  <div class="env-flap" aria-hidden="true"></div>
-  <div class="env-seal" aria-hidden="true">
-      <svg width="42" height="24" viewBox="0 0 120 64" aria-hidden="true">
-        <text x="60" y="46" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
-              font-size="42" font-weight="300" fill="#7E3F38" letter-spacing="1">N<tspan
-              font-size="30" font-style="italic" fill="#9B5F57" dx="3">&amp;</tspan><tspan dx="3">E</tspan></text>
-    </svg>
-  </div>
+  <p class="env-cta"><button class="btn" id="openInvite">Open Invitation</button></p>
  </div>
 </div>
 
@@ -103,6 +123,7 @@
     <figure class="photo wide rev">
       <img src="/images/proposal.jpg" width="1500" height="998" loading="lazy" decoding="async"
            alt="Eric on one knee proposing to Natalie on a rock above the river at Ninh Binh, Vietnam">
+      <figcaption>The Proposal<i class="cap-dot" aria-hidden="true"></i>Ninh Binh, Vietnam</figcaption>
     </figure>
   </div>
 </section>
@@ -883,56 +904,81 @@ const RSVP = {
    ============================================================ */
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* The invitation doesn't just fade. The seal lifts away, a line of light
-   travels across the card, the card unfolds toward you and dissolves into
-   the page underneath. */
-function closeInvitation(){
-  const ov = $("#invitation");
-  if(!ov || ov.classList.contains("gone") || ov.classList.contains("opening")) return;
-  localStorage.setItem("ne_opened","1");
+/* The invitation arrives sealed. Pressing Open breaks the wax, lifts the
+   flap and draws the letter out to be read; pressing again puts it away and
+   lets you into the site. Two presses, because that is how opening an
+   invitation actually goes. */
+const INV = {
+  stage(){ return $("#envStage"); },
+  state(v){ const st = this.stage(); if(st) st.dataset.state = v; },
 
-  if(REDUCED){
-    ov.classList.add("gone");
+  open(){
+    const st = this.stage(); if(!st || st.dataset.state !== "sealed") return;
+    const btn = $("#openInvite");
+    if(REDUCED){
+      this.state("open");
+      if(btn) btn.textContent = "Enter our website";
+      return;
+    }
+    this.fitScene();
+    this.state("opening");
+    if(btn) btn.disabled = true;
+    setTimeout(()=>{
+      this.state("open");
+      if(btn){ btn.disabled = false; btn.textContent = "Enter our website"; btn.focus(); }
+    }, 1950);
+  },
+
+  leave(){
+    const ov = $("#invitation");
+    if(!ov || ov.classList.contains("gone")) return;
+    localStorage.setItem("ne_opened","1");
     document.body.style.overflow = "";
-    return;
+    if(REDUCED){ ov.classList.add("gone"); return; }
+    this.state("leaving");
+    setTimeout(()=>{ ov.classList.add("gone"); }, 760);
+  },
+
+  /* Once the letter is out it stands at full size, so the scene has to grow
+     to make room for it, otherwise it would sit on top of the button. */
+  fitScene(){
+    const scene = document.querySelector(".env-scene");
+    const card  = document.querySelector(".env-letter .card-invite");
+    if(scene && card) scene.style.height = card.offsetHeight + "px";
+  },
+
+  reset(){
+    const ov = $("#invitation"), btn = $("#openInvite");
+    if(!ov) return;
+    const scene = document.querySelector(".env-scene");
+    if(scene) scene.style.height = "";
+    ov.classList.remove("gone");
+    this.state("sealed");
+    if(btn){ btn.disabled = false; btn.textContent = "Open Invitation"; }
+    document.body.style.overflow = "hidden";
+    window.scrollTo({top:0, behavior: REDUCED ? "auto" : "smooth"});
+    setTimeout(()=>{ if(btn) btn.focus(); }, 300);
   }
+};
 
-  ov.classList.add("opening");
-  document.body.style.overflow = "";
-  const done = () => {
-    ov.classList.add("gone");
-    ov.classList.remove("opening");
-  };
-  ov.addEventListener("animationend", function onEnd(e){
-    if(e.target !== ov) return;
-    ov.removeEventListener("animationend", onEnd);
-    done();
-  });
-  setTimeout(done, 3000);   /* belt and braces if the animation never fires */
-}
+function closeInvitation(){ INV.leave(); }
+function showInvitation(){ INV.reset(); }
 
-function showInvitation(){
-  const ov = $("#invitation");
-  if(!ov) return;
-  ov.classList.remove("gone","opening");
-  /* restart the entrance animation on the card */
-  const card = ov.querySelector(".card-invite");
-  if(card && !REDUCED){ card.style.animation = "none"; void card.offsetWidth; card.style.animation = ""; }
-  document.body.style.overflow = "hidden";
-  window.scrollTo({top:0, behavior: REDUCED ? "auto" : "smooth"});
-  setTimeout(()=>{ const b = $("#openInvite"); if(b) b.focus(); }, 300);
-}
 function initInvitation(){
-  const ov = $("#invitation");
+  const ov = $("#invitation"), btn = $("#openInvite");
   const seen = localStorage.getItem("ne_opened") === "1";
   const deepLink = location.hash && location.hash !== "#welcome";
 
-  $("#openInvite").addEventListener("click", closeInvitation);
-  ov.addEventListener("keydown", e=>{ if(e.key==="Escape") closeInvitation(); });
+  btn.addEventListener("click", ()=>{
+    const st = $("#envStage");
+    if(st && st.dataset.state === "open") INV.leave();
+    else INV.open();
+  });
+  ov.addEventListener("keydown", e=>{ if(e.key === "Escape") INV.leave(); });
 
-  if(seen || deepLink){ ov.classList.add("gone"); document.body.style.overflow=""; return; }
+  if(seen || deepLink){ ov.classList.add("gone"); document.body.style.overflow = ""; return; }
   document.body.style.overflow = "hidden";
-  setTimeout(()=>{ const b=$("#openInvite"); if(b) b.focus(); }, 900);
+  setTimeout(()=>{ btn.focus(); }, 900);
 }
 
 function initNav(){
