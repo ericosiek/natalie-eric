@@ -694,15 +694,18 @@ function renderEmail(){
             <button class="btn ghost tiny" data-pick="none">None</button>
             <button class="btn ghost tiny" data-pick="uninvited">Not yet invited</button>
             <button class="btn ghost tiny" data-pick="noreply">Invited, no reply</button>
+            <button class="btn ghost tiny" data-pick="attending">Attending</button>
+            <button class="btn ghost tiny" data-pick="declined">Declined</button>
             <button class="btn ghost tiny" data-pick="noemail">Missing an email</button>
           </div>
           <div class="picker" id="picker">
             ${parties.map(p => {
               const gs = partyGuests(p.party);
               const replied = gs.filter(g=>g.attending).length;
+              const yes = gs.filter(g=>g.attending==='yes').length;
               return `<label><input type="checkbox" value="${h(p.party)}"${chosen.has(p.party)?' checked':''}>
                 <span>${h(p.party)} &middot; ${h(p.name)}</span>
-                <span class="who">${gs.length} guest${gs.length===1?'':'s'}${replied?' · '+replied+' replied':''}${p.emails?'':' · NO EMAIL'}${p.sent?'':' · not invited'}</span>
+                <span class="who">${gs.length} guest${gs.length===1?'':'s'}${replied?' · '+replied+' replied':''}${yes?' · '+yes+' coming':''}${p.emails?'':' · NO EMAIL'}${p.sent?'':' · not invited'}</span>
               </label>`;
             }).join('')}
           </div>
@@ -747,6 +750,10 @@ function renderEmail(){
         mode === 'none'      ? false :
         mode === 'uninvited' ? !p.sent :
         mode === 'noreply'   ? (!!p.sent && !gs.some(g => g.attending)) :
+        /* anyone in the party is coming — the list for a thank-you */
+        mode === 'attending' ? gs.some(g => g.attending === 'yes') :
+        /* replied, and nobody in the party is coming */
+        mode === 'declined'  ? (gs.some(g => g.attending) && !gs.some(g => g.attending === 'yes')) :
         mode === 'noemail'   ? !p.emails : i.checked;
     });
     sync();

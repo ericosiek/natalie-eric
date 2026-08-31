@@ -451,7 +451,22 @@ function saveRsvp(body){
 
   var ps = sheet(SH.PARTIES);
   if(body.note)  ps.getRange(row, P.NOTE+1).setNumberFormat('@').setValue(String(body.note).slice(0,1000));
-  if(body.email) ps.getRange(row, P.EMAILS+1).setNumberFormat('@').setValue(String(body.email).slice(0,200));
+  if(body.email){
+    /* add it to whatever is already there rather than overwriting, so a
+       second person replying does not wipe the first one's address */
+    var typed = String(body.email).split(/[,;]/).map(function(x){ return x.trim(); }).filter(String);
+    var have  = String(ps.getRange(row, P.EMAILS+1).getValue()||'')
+                  .split(/[,;]/).map(function(x){ return x.trim(); }).filter(String);
+    var seen = {}, merged = [];
+    have.concat(typed).forEach(function(e){
+      var k = e.toLowerCase();
+      if(k && !seen[k]){ seen[k] = true; merged.push(e); }
+    });
+    if(merged.join(', ') !== have.join(', ')){
+      ps.getRange(row, P.EMAILS+1).setNumberFormat('@').setValue(merged.join(', ').slice(0,500));
+      logChange(before.partyId, '', 'Email added', have.join(', ') || '(none)', merged.join(', '), 'guest');
+    }
+  }
   ps.getRange(row, P.LASTREPLY+1).setValue(stamp);
 
   SpreadsheetApp.flush();
@@ -493,7 +508,19 @@ function notifyRsvp(party, body, isUpdate, changes){
       (body.note  ? '\n\nTheir note:\n' + body.note : '') +
       (body.email ? '\n\nContact: ' + body.email : '') +
       '\n\nParty ' + party.partyId + '\n' + ss().getUrl(),
-    mailOptions());
+    notifyOptions(to));
+}
+
+/* This one goes to Natalie and Eric, not to a guest, so it does not wear the
+   alias. Sending from the alias TO the alias is a message to yourself: Gmail
+   keeps a single copy but files it under BOTH Sent and Inbox, which reads as
+   two emails. Leaving the alias off, and only using it when the notification
+   is going somewhere else, keeps it to one. */
+function notifyOptions(to){
+  var o = { name:'Wedding RSVPs', replyTo: sendAsAddress() };
+  var alias = sendAs();
+  if(alias && String(to).toLowerCase().indexOf(String(alias).toLowerCase()) === -1) o.from = alias;
+  return o;
 }
 
 /* ==========================================================================

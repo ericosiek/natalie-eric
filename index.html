@@ -85,6 +85,12 @@
     <p class="rev" style="margin-top:2.6rem">
       <a href="#rsvp" class="btn">RSVP</a>
     </p>
+
+    <figure class="photo wide rev">
+      <img src="/images/proposal.jpg" width="1500" height="998" loading="lazy" decoding="async"
+           alt="Eric on one knee proposing to Natalie on a rock above the river at Ninh Binh, Vietnam">
+      <figcaption>Where it all started &middot; Ninh Binh, Vietnam</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -110,8 +116,8 @@
       <p class="eyebrow">Where we'll be</p>
       <h2>The Venue</h2>
       <div class="rule"><i></i></div>
-      <p class="lede">Riverway Clubhouse sits on the water in Burnaby, with the ceremony, dinner and
-        dancing all under one roof, so once you arrive you're set for the whole day.</p>
+      <p class="lede">Riverway Clubhouse sits on the water in Burnaby, with the ceremony and reception
+        all under one roof, so once you arrive you're set for the whole day.</p>
     </div>
 
     <figure class="venue-photo rev">
@@ -124,8 +130,10 @@
         <p class="eyebrow">Address</p>
         <p class="venue-name" id="mapVenue">Riverway Clubhouse</p>
         <p class="venue-line" id="mapAddr">9001 Bill Fox Way<br>Burnaby, BC V5J 5J3</p>
-        <p class="venue-note">A quiet spot on the water, with the greens on one side and the pond on
-          the other. Parking on site is limited, so we recommend taking an Uber or Lyft.</p>
+        <p class="venue-note">Nestled along the Fraser River, Riverway Clubhouse offers a romantic
+          West Coast setting surrounded by lush greenery and serene views, an elegant backdrop for the
+          beginning of our next chapter together.</p>
+        <p class="venue-note tight">Parking on site is limited, so we recommend taking an Uber or Lyft.</p>
         <p style="margin-top:1.4rem">
           <a class="btn ghost sm" id="mapLink" target="_blank" rel="noopener"
              href="https://www.google.com/maps/search/?api=1&amp;query=Riverway+Clubhouse+9001+Bill+Fox+Way+Burnaby+BC">Get directions</a>
@@ -156,6 +164,11 @@
     <p class="center rev" style="margin-top:2.4rem">
       <button class="btn ghost" id="addAll">Add the full schedule to my calendar</button>
     </p>
+
+    <figure class="photo portrait rev">
+      <img src="/images/couple.jpg" width="1125" height="1500" loading="lazy" decoding="async"
+           alt="Natalie and Eric dressed up together, Natalie holding a bouquet of white roses">
+    </figure>
   </div>
 </section>
 
@@ -288,7 +301,7 @@ const FAQ = [
   { q:"Is the wedding indoors or outdoors?",
     a:"<p>Our wedding ceremony is outdoors, but our reception will be indoors.</p>" },
   { q:"I'm travelling from Brazil, do I need a visa for Canada?",
-    a:"<p>Usually an eTA rather than a full visa, as long as you're flying in. Brazilian passport holders can apply for an <b>eTA</b> (about CAD $7, approved online, often within minutes) if you either hold a valid US non&#8209;immigrant visa on the day you apply, or have held a Canadian visitor visa in the past 10 years.</p><p>Two things worth knowing:</p><ul><li>The eTA only covers arrival <b>by air</b>. If you're driving or coming by bus, train or boat, you need a visitor visa instead.</li><li>Your US visa needs to be valid on the day you apply for the eTA, but it doesn't have to still be valid when you travel.</li></ul><p>If neither applies to you, you'll need a visitor visa (temporary resident visa), which takes considerably longer and includes biometrics, so please start early. The official rules are on <a href=\"https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/eta/eligibility/eta-x.html\" target=\"_blank\" rel=\"noopener\">the Government of Canada site</a>, and we're happy to send a letter of invitation if it helps.</p>" }
+    a:"<p>Usually an eTA rather than a full visa, as long as you're flying in. Brazilian passport holders can apply for an <b>eTA</b> (about CAD $7, approved online, often within minutes) if you either hold a valid US non&#8209;immigrant visa on the day you apply, or have held a Canadian visitor visa in the past 10 years.</p><p><b>Please apply as soon as you know you're coming.</b> Most eTAs come back within minutes, but some get held for extra documents and take days or even weeks, and you cannot board a flight to Canada without one. Applying early costs nothing extra and leaves room to sort out any surprises.</p><p>Two things worth knowing:</p><ul><li>The eTA only covers arrival <b>by air</b>. If you're driving or coming by bus, train or boat, you need a visitor visa instead.</li><li>Your US visa needs to be valid on the day you apply for the eTA, but it doesn't have to still be valid when you travel.</li></ul><p>If neither applies to you, you'll need a visitor visa (temporary resident visa), which takes considerably longer and includes biometrics, so please start as early as you possibly can &mdash; processing can run to several months. The official rules are on <a href=\"https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/eta/eligibility/eta-x.html\" target=\"_blank\" rel=\"noopener\">the Government of Canada site</a>, and we're happy to send a letter of invitation if it helps.</p>" }
 ];
 
 /* ============================================================
@@ -682,7 +695,8 @@ const RSVP = {
         (p.responded
           ? 'Here’s what we have on file. If something needs to change, email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a> and we’ll take care of it.'
           : 'We didn’t receive a reply from your party. If you’d still like to come, email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a> and we’ll do our best.')+
-        '</div>'+ (p.responded ? this.summaryHtml() : "");
+        '</div>'+ (p.responded ? this.summaryHtml() : "") + this.notYouHtml();
+      this.wireNotYou();
       return;
     }
 
@@ -690,8 +704,7 @@ const RSVP = {
     const mealOpts = CONFIG.meals.map(m=>'<option value="'+esc(m)+'">'+esc(m)+'</option>').join("");
     this.panel.innerHTML =
       (p.responded
-        ? '<div class="notice ok"><strong>You’ve already replied, thank you.</strong><br>'+
-          'You can change your answer here any time until we close RSVPs for your party.</div>'
+        ? '<div class="notice ok"><strong>You’ve already replied, thank you.</strong></div>'
         : '<div class="notice">Replying for <strong>'+esc(p.label||"your party")+'</strong>. '+
           'You can answer for everyone in your party below.</div>')+
       '<form id="rsvpForm" novalidate>'+
@@ -725,7 +738,8 @@ const RSVP = {
         '<div id="formErr"></div>'+
         '<button type="submit" class="btn wide" id="submitBtn">'+(p.responded?"Update our response":"Send our response")+'</button>'+
       '</form>'+
-      (CONFIG.apiUrl ? "" : '<p style="margin-top:1.2rem;font-size:.9rem;color:var(--ink-faint);text-align:center">Preview mode. Responses are not being saved yet.</p>');
+      (CONFIG.apiUrl ? "" : '<p style="margin-top:1.2rem;font-size:.9rem;color:var(--ink-faint);text-align:center">Preview mode. Responses are not being saved yet.</p>')+
+      this.notYouHtml();
 
     /* prefill meals (value set after options exist) */
     p.guests.forEach((g,i)=>{ if(g.meal) { const s=$("#m"+i); if(s) s.value=g.meal; } });
@@ -742,6 +756,7 @@ const RSVP = {
     });
 
     $("#rsvpForm").addEventListener("submit", e=>{ e.preventDefault(); this.submit(); });
+    this.wireNotYou();
   },
 
   summaryHtml(){
@@ -806,17 +821,47 @@ const RSVP = {
         '<div class="rule tight"><i></i></div>'+
         '<h3 style="margin-bottom:.7rem">'+(any?"Thank you. We can’t wait to see you.":"Thank you for letting us know.")+'</h3>'+
         '<p style="color:var(--ink-soft);max-width:46ch;margin:0 auto 1.4rem">'+
-          (any ? "We’ve got your reply. You can change it here any time until we close RSVPs for your party."
-               : "We’re sorry you can’t make it, and we’ll be thinking of you. You can change this any time until we close RSVPs for your party.")+
+          (any ? "We’ve got your reply."
+               : "We’re sorry you can’t make it, and we’ll be thinking of you.")+
         '</p>'+
       '</div>'+
       this.summaryHtml()+
       '<p class="center" style="margin-top:1.8rem"><button class="btn ghost sm" id="editAgain">Change our response</button></p>'+
-      (any ? '<p class="center" style="margin-top:1rem"><button class="btn ghost sm" id="thxCal">Add the schedule to my calendar</button></p>' : "");
+      (any ? '<p class="center" style="margin-top:1rem"><button class="btn ghost sm" id="thxCal">Add the schedule to my calendar</button></p>' : "")+
+      this.notYouHtml();
 
     $("#editAgain").addEventListener("click", ()=> this.renderForm());
     const tc = $("#thxCal");
     if(tc) tc.addEventListener("click", e=>{ e.stopPropagation(); calMenu(tc, SCHEDULE, "natalie-eric-wedding"); });
+    this.wireNotYou();
+  },
+
+  /* A way out if someone picked the wrong household in the search. Without
+     this they were stuck looking at another family's answers with no way
+     back. */
+  notYouHtml(){
+    const p = this.party;
+    if(!p) return "";
+    return '<p class="lk-back">Not <b>'+esc(p.label||"this party")+'</b>? '+
+           '<button type="button" class="linkish" id="notYou">Search for your name again</button></p>';
+  },
+  wireNotYou(){
+    const b = $("#notYou");
+    if(!b) return;
+    b.addEventListener("click", ()=>{
+      this.token = null;
+      this.party = null;
+      try{ sessionStorage.removeItem("ne_token"); }catch(e){}
+      /* drop the invite code from the address bar so a refresh doesn't
+         put them straight back into the wrong party */
+      if(location.search){
+        const u = new URL(location.href);
+        ["i","p","party"].forEach(k=> u.searchParams.delete(k));
+        history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+      }
+      this.renderLookup();
+      this.panel.scrollIntoView({behavior:"smooth", block:"center"});
+    });
   }
 };
 
