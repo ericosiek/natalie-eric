@@ -58,11 +58,12 @@
     </a>
     <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Menu"><span></span></button>
     <nav class="nav-links" id="navLinks">
+      <a href="#welcome" id="navInvite">Invitation</a>
       <a href="#welcome">Welcome</a>
       <a href="#schedule">Schedule</a>
       <a href="#rsvp">RSVP</a>
       <a href="#faq">FAQ</a>
-      <a href="/registry/">Registry</a>
+      <a href="/registry/">Honeymoon Fund</a>
     </nav>
   </div>
 </header>
@@ -117,6 +118,19 @@
     <p class="center rev" style="margin-top:2.4rem">
       <button class="btn ghost" id="addAll">Add the full schedule to my calendar</button>
     </p>
+
+    <div class="map rev">
+      <iframe title="Map to Riverway Clubhouse" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+              src="https://www.google.com/maps?q=Riverway%20Clubhouse%2C%209001%20Bill%20Fox%20Way%2C%20Burnaby%2C%20BC%20V5J%205J3&amp;output=embed"></iframe>
+      <div class="map-foot">
+        <div>
+          <div class="map-name" id="mapVenue">Riverway Clubhouse</div>
+          <div class="map-addr" id="mapAddr">9001 Bill Fox Way, Burnaby, BC V5J 5J3</div>
+        </div>
+        <a class="btn ghost sm" id="mapLink" target="_blank" rel="noopener"
+           href="https://www.google.com/maps/search/?api=1&amp;query=Riverway+Clubhouse+9001+Bill+Fox+Way+Burnaby+BC">Directions</a>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -155,22 +169,20 @@
   </div>
 </section>
 <!-- ==========================================================
-     REGISTRY  (teaser — the real thing lives at /registry/)
+     HONEYMOON FUND  (the full page lives at /registry/)
      ========================================================== -->
 <section class="alt" id="registry">
   <div class="wrap narrow center">
-    <p class="eyebrow rev">With gratitude</p>
-    <h2 class="rev">Registry</h2>
+    <h2 class="rev">Honeymoon Fund</h2>
     <div class="rule rev"><i></i></div>
     <p class="lede rev">
-      We have set up a flexible registry where you can contribute any amount you wish toward the
-      items on our wish list, securely online by credit card. If you would prefer to send a gift
-      via e&#8209;transfer, our email is
-      <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>, and we are
-      also happy to accept cash or cheques.
+      Your presence is enough of a present to us! If you should like to celebrate with a gift,
+      a cash contribution, e&#8209;transfer to
+      <a href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>
+      or contribution to our Honeymoon Fund would be greatly appreciated. Thank you!
     </p>
     <p class="rev" style="margin-top:2.2rem">
-      <a class="btn" href="/registry/">View our registry</a>
+      <a class="btn" href="/registry/">Visit our honeymoon fund</a>
     </p>
   </div>
 </section>
@@ -220,7 +232,7 @@ const CONFIG = {
    ============================================================ */
 const SCHEDULE = [
   { key:"tea",    title:"Chinese Tea Ceremony", start:"11:00", end:"12:00",
-    tags:["Formal attire","Family & bridal party only"], note:"" },
+    tags:["Formal attire"], note:"Family and bridal party only." },
   { key:"cer",    title:"Wedding Ceremony", start:"15:30", end:"17:00",
     tags:["Formal attire"], note:"Guests arrive at 3:30pm. The ceremony begins promptly at 4pm." },
   { key:"cock",   title:"Cocktail Hour", start:"17:00", end:"18:00",
@@ -365,7 +377,7 @@ function renderSchedule(){
       <div class="ev-time">${fmtTime(ev.start)} &ndash; ${fmtTime(ev.end)}</div>
       <div>
         <h3 class="ev-title">${esc(ev.title)}</h3>
-        <p class="ev-place">${esc(CONFIG.venue)} &middot; Burnaby, BC</p>
+        <p class="ev-place">${esc(ev.place || CONFIG.venue)} &middot; Burnaby, BC</p>
         ${ev.note ? `<p class="ev-note">${esc(ev.note)}</p>` : ""}
         <div class="ev-tags">${ev.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
       </div>
@@ -434,6 +446,55 @@ function renderCountdown(){
   };
   const unit = (n,l)=> `<div class="cd-unit"><div class="cd-num">${n}</div><div class="cd-lab">${l}</div></div>`;
   tick(); setInterval(tick, 30000);
+}
+
+/* ============================================================
+   LIVE CONTENT
+   Schedule, questions and meal options come from the sheet so they can be
+   changed from the admin portal. If the call fails for any reason the page
+   simply keeps the copy baked into this file.
+   ============================================================ */
+async function loadSite(){
+  if(!CONFIG.apiUrl) return;
+  try{
+    const r = await fetch(CONFIG.apiUrl + "?action=site", {redirect:"follow"});
+    const j = await r.json();
+    applySite(j && j.ok ? j.site : null);
+  }catch(e){ /* keep the built-in copy */ }
+}
+
+function applySite(site){
+  if(!site) return;
+  if(site.meals && site.meals.length) CONFIG.meals = site.meals;
+  if(site.venue)   CONFIG.venue   = site.venue;
+  if(site.address) CONFIG.address = site.address;
+
+  if(site.schedule && site.schedule.length){
+    SCHEDULE.length = 0;
+    site.schedule.forEach((e,i)=> SCHEDULE.push({
+      key:"e"+i, title:e.title, start:e.start, end:e.end,
+      tags:e.tags||[], note:e.note||"", place:e.place||""
+    }));
+    renderSchedule();
+  }
+  if(site.faq && site.faq.length){
+    FAQ.length = 0;
+    site.faq.forEach(f => FAQ.push({
+      q: f.q,
+      a: /<[a-z][\s\S]*>/i.test(f.a) ? f.a : "<p>"+esc(f.a).replace(/\n/g,"<br>")+"</p>"
+    }));
+    renderFaq();
+  }
+  updateMap();
+  initReveal();
+}
+
+function updateMap(){
+  const v = $("#mapVenue"), a = $("#mapAddr"), l = $("#mapLink");
+  if(v) v.textContent = CONFIG.venue;
+  if(a) a.textContent = CONFIG.address;
+  if(l) l.href = "https://www.google.com/maps/search/?api=1&query=" +
+                 encodeURIComponent(CONFIG.venue + ", " + CONFIG.address);
 }
 
 /* ============================================================
@@ -552,8 +613,14 @@ const RSVP = {
             'Try the spelling on your invitation, or email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a>.</div>';
           return;
         }
-        $("#lkOut").innerHTML = r.matches.map(m=>
-          '<button class="btn ghost wide" style="margin-bottom:.6rem" data-t="'+esc(m.code)+'">'+esc(m.label)+'</button>').join("");
+        $("#lkOut").innerHTML =
+          '<p class="lk-hint">We found '+(r.matches.length===1?'this party':r.matches.length+' parties')+
+          '. Choose the one you belong to.</p>' +
+          r.matches.map(m=>
+            '<button class="lk-hit" data-t="'+esc(m.code)+'">'+
+              '<span class="lk-label">'+esc(m.label)+'</span>'+
+              '<span class="lk-names">'+esc((m.members||[]).join(", "))+'</span>'+
+            '</button>').join("");
         $$("#lkOut button").forEach(b=> b.addEventListener("click", ()=>{
           this.token = b.dataset.t; localStorage.setItem("ne_token", this.token); this.load();
         }));
@@ -716,22 +783,28 @@ const RSVP = {
 /* ============================================================
    CHROME: invitation, nav, reveal
    ============================================================ */
+function closeInvitation(){
+  const ov = $("#invitation");
+  ov.classList.add("gone");
+  document.body.style.overflow = "";
+  localStorage.setItem("ne_opened","1");
+}
+function showInvitation(){
+  const ov = $("#invitation");
+  ov.classList.remove("gone");
+  document.body.style.overflow = "hidden";
+  setTimeout(()=>{ const b = $("#openInvite"); if(b) b.focus(); }, 300);
+}
 function initInvitation(){
   const ov = $("#invitation");
   const seen = localStorage.getItem("ne_opened") === "1";
   const deepLink = location.hash && location.hash !== "#welcome";
 
+  $("#openInvite").addEventListener("click", closeInvitation);
+  ov.addEventListener("keydown", e=>{ if(e.key==="Escape") closeInvitation(); });
+
   if(seen || deepLink){ ov.classList.add("gone"); document.body.style.overflow=""; return; }
   document.body.style.overflow = "hidden";
-
-  const open = ()=>{
-    ov.classList.add("gone");
-    document.body.style.overflow = "";
-    localStorage.setItem("ne_opened","1");
-    setTimeout(()=> $("#openInvite").blur(), 100);
-  };
-  $("#openInvite").addEventListener("click", open);
-  ov.addEventListener("keydown", e=>{ if(e.key==="Escape") open(); });
   setTimeout(()=>{ const b=$("#openInvite"); if(b) b.focus(); }, 900);
 }
 
@@ -745,6 +818,8 @@ function initNav(){
   $$("#navLinks a").forEach(a=> a.addEventListener("click", ()=>{
     links.classList.remove("open"); toggle.setAttribute("aria-expanded","false");
   }));
+  const inv = $("#navInvite");
+  if(inv) inv.addEventListener("click", e=>{ e.preventDefault(); showInvitation(); });
 
   const onScroll = ()=> nav.classList.toggle("stuck", window.scrollY > 12);
   onScroll(); window.addEventListener("scroll", onScroll, {passive:true});
@@ -785,6 +860,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   initNav();
   initReveal();
   RSVP.init();
+  loadSite();
 });
 </script>
 </body>

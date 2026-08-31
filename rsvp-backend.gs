@@ -1,198 +1,232 @@
 /* ==========================================================================
-   NATALIE & ERIC - RSVP BACKEND
-   Google Apps Script bound to the "Natalie & Eric - Wedding RSVPs" spreadsheet.
+   NATALIE & ERIC - WEDDING BACKEND
+   Google Apps Script bound to the "Natalie & Eric - Wedding RSVPs" sheet.
+
+   It serves three things:
+     1. the public site content (schedule, FAQ, meal options)
+     2. the guest RSVP flow (last-name lookup, party load, save)
+     3. the admin portal at natalie-eric.website/admin
 
    FIRST TIME SETUP
-   1. Run  setup()   once. It builds every tab, header, formula and checkbox.
-   2. Deploy > New deployment > Web app
-        Execute as:      Me
-        Who has access:  Anyone
-      Copy the /exec URL and paste it into CONFIG.apiUrl in index.html.
-   3. Type your guests into the Guests tab (one row per person, Party column
-      holds the party number, e.g. 0037).
-   4. Run  refreshParties()  to create a party row + unique link for every
-      party number that appears in Guests. Safe to re-run any time; it never
-      changes a token that already exists.
+     1. Project Settings -> Script properties -> add  ADMIN_PASSWORD
+     2. Run  setup()  once. It builds every tab and seeds the content.
+     3. Deploy > New deployment > Web app, Execute as Me, Access Anyone.
+     4. Paste the /exec URL into CONFIG.apiUrl in index.html and admin.
 
-   DAY TO DAY
-   - To close RSVPs for a party: untick "RSVP Open" on its row in Parties.
-     The website reflects it on the guest's next page load, and the server
-     refuses any submission for that party even if their page was already open.
-   - To reopen or extend: tick it back on.
-   - To close everything at once: set "RSVP Open" to FALSE on the Config tab.
+   REDEPLOYING AFTER A CODE CHANGE
+     Deploy > Manage deployments > pencil > Version: New version > Deploy.
+     That keeps the same URL. "New deployment" mints a new one and breaks
+     the site.
    ========================================================================== */
 
-var SHEET_GUESTS  = 'Guests';
-var SHEET_PARTIES = 'Parties';
-var SHEET_CONFIG  = 'Config';
+var SH = {
+  GUESTS:'Guests', PARTIES:'Parties', CONFIG:'Config', SCHEDULE:'Schedule',
+  FAQ:'FAQ', MEALS:'Meals', LOG:'Log', TEMPLATES:'Templates'
+};
 
-var G = { PARTY:0, FIRST:1, LAST:2, EMAIL:3, PHONE:4, ATTENDING:5, MEAL:6, DIET:7, UPDATED:8, GID:9 };
-var P = { PARTY:0, NAME:1, OPEN:2, TOKEN:3, LINK:4, INVITED:5, REPLIED:6, ATTENDING:7,
-          EMAILS:8, NOTE:9, LASTREPLY:10, SENT:11 };
+/* column indexes, zero based */
+var G = { PARTY:0, FIRST:1, LAST:2, EMAIL:3, PHONE:4, ATTENDING:5, MEAL:6,
+          DIET:7, UPDATED:8, GID:9, NOTES:10 };
+var P = { PARTY:0, NAME:1, OPEN:2, TOKEN:3, LINK:4, WAVE:5, DEADLINE:6,
+          INVITED:7, REPLIED:8, ATTENDING:9, EMAILS:10, NOTE:11, LASTREPLY:12,
+          SENT:13, REMINDED:14, ADMIN:15 };
+var GUEST_COLS = 11, PARTY_COLS = 16;
 
-/* ========================== web API ====================================== */
+var SESSION_HOURS = 12;
+
+/* ==========================================================================
+   ROUTING
+   ========================================================================== */
 
 function doGet(e){
+  var p = (e && e.parameter) || {};
   try{
-    var a = (e && e.parameter && e.parameter.action) || 'party';
-    if(a === 'party') return json(getParty(e.parameter.token));
-    if(a === 'find')  return json(findParties(e.parameter.q));
-    if(a === 'ping')  return json({ok:true, pong:true, time:new Date().toISOString()});
-    return json({ok:false, error:'Unknown action'});
-  }catch(err){
-    return json({ok:false, error:String(err && err.message || err)});
-  }
+    switch(p.action || 'party'){
+      case 'ping':   return json({ok:true, pong:true, time:new Date().toISOString()});
+      case 'site':   return json({ok:true, site:siteContent()});
+      case 'find':   return json(findParties(p.q));
+      case 'party':  return json(getParty(p.token));
+      default:       return json({ok:false, error:'Unknown action'});
+    }
+  }catch(err){ return json({ok:false, error:msg(err)}); }
 }
 
 function doPost(e){
   var lock = LockService.getScriptLock();
   try{
-    lock.waitLock(20000);
-    var body = JSON.parse(e.postData.contents);
-    if(body.action !== 'rsvp') return json({ok:false, error:'Unknown action'});
-    return json(saveRsvp(body));
+    lock.waitLock(25000);
+    var b = JSON.parse(e.postData.contents);
+    var a = b.action || '';
+
+    /* --- public --- */
+    if(a === 'rsvp')  return json(saveRsvp(b));
+    if(a === 'login') return json(login(b));
+
+    /* --- everything below needs a valid admin session --- */
+    if(a.indexOf('admin.') !== 0) return json({ok:false, error:'Unknown action'});
+    if(!validSession(b.token))    return json({ok:false, error:'Your session expired. Please sign in again.', reauth:true});
+
+    switch(a){
+      case 'admin.data':        return json({ok:true, data:adminData()});
+      case 'admin.saveGuest':   return json(adminSaveGuest(b));
+      case 'admin.deleteGuest': return json(adminDeleteGuest(b));
+      case 'admin.saveParty':   return json(adminSaveParty(b));
+      case 'admin.deleteParty': return json(adminDeleteParty(b));
+      case 'admin.saveRows':    return json(adminSaveRows(b));
+      case 'admin.saveConfig':  return json(adminSaveConfig(b));
+      case 'admin.preview':     return json({ok:true, html:renderEmail(b.subject, b.body, previewParty(b.partyId))});
+      case 'admin.send':        return json(adminSend(b));
+      case 'admin.logout':      return json(logout(b));
+      default:                  return json({ok:false, error:'Unknown action'});
+    }
   }catch(err){
-    return json({ok:false, error:String(err && err.message || err)});
+    return json({ok:false, error:msg(err)});
   }finally{
     try{ lock.releaseLock(); }catch(_){}
   }
 }
 
-function json(obj){
-  return ContentService.createTextOutput(JSON.stringify(obj))
+function json(o){
+  return ContentService.createTextOutput(JSON.stringify(o))
                        .setMimeType(ContentService.MimeType.JSON);
 }
+function msg(err){ return String((err && err.message) || err); }
 
-/* ========================== reads ======================================== */
+/* ==========================================================================
+   AUTH
+   Password lives in Script Properties, never in this file or the repo.
+   Sessions are random tokens with an expiry, also in Script Properties.
+   ========================================================================== */
 
-function getParty(token){
-  if(!token) return {ok:false, error:'No invitation code was supplied.'};
-  var row = findPartyRow(String(token).trim());
-  if(!row) return {ok:false, error:"We couldn't find that invitation link."};
-  return {ok:true, config:publicConfig(), party:buildParty(row)};
+function props(){ return PropertiesService.getScriptProperties(); }
+
+function login(b){
+  var want = String(props().getProperty('ADMIN_PASSWORD') || '');
+  var user = String(props().getProperty('ADMIN_USER') || 'wedding');
+  if(!want) return {ok:false, error:'No admin password is set on the server yet.'};
+
+  /* crude but effective brute-force brake */
+  var fails = Number(props().getProperty('LOGIN_FAILS') || 0);
+  var until = Number(props().getProperty('LOGIN_BLOCKED_UNTIL') || 0);
+  if(until && Date.now() < until){
+    return {ok:false, error:'Too many attempts. Try again in a few minutes.'};
+  }
+
+  if(String(b.user||'').trim().toLowerCase() !== user.toLowerCase() ||
+     String(b.pass||'') !== want){
+    fails++;
+    props().setProperty('LOGIN_FAILS', String(fails));
+    if(fails >= 6){
+      props().setProperty('LOGIN_BLOCKED_UNTIL', String(Date.now() + 15*60*1000));
+      props().setProperty('LOGIN_FAILS', '0');
+    }
+    return {ok:false, error:'That username or password is not right.'};
+  }
+
+  props().setProperty('LOGIN_FAILS', '0');
+  props().deleteProperty('LOGIN_BLOCKED_UNTIL');
+
+  var token = Utilities.getUuid().replace(/-/g,'') + Utilities.getUuid().replace(/-/g,'');
+  var sessions = readSessions();
+  sessions[token] = Date.now() + SESSION_HOURS*3600*1000;
+  writeSessions(sessions);
+  return {ok:true, token:token, expires:sessions[token]};
 }
 
-function findParties(q){
-  if(!q || String(q).trim().length < 2) return {ok:true, matches:[]};
-  var needle = String(q).trim().toLowerCase();
-  var guests = sheet(SHEET_GUESTS).getDataRange().getValues();
-  var ids = {};
-  for(var i=1;i<guests.length;i++){
-    var last  = String(guests[i][G.LAST]  || '').toLowerCase();
-    var first = String(guests[i][G.FIRST] || '').toLowerCase();
-    if(!last && !first) continue;
-    if(last === needle || first === needle ||
-       last.indexOf(needle) === 0 || (first+' '+last).indexOf(needle) > -1){
-      ids[pad(guests[i][G.PARTY])] = true;
+function logout(b){
+  var s = readSessions();
+  delete s[String(b.token||'')];
+  writeSessions(s);
+  return {ok:true};
+}
+
+function readSessions(){
+  try{ return JSON.parse(props().getProperty('SESSIONS') || '{}'); }
+  catch(e){ return {}; }
+}
+function writeSessions(s){
+  var now = Date.now(), out = {};
+  Object.keys(s).forEach(function(k){ if(s[k] > now) out[k] = s[k]; });
+  props().setProperty('SESSIONS', JSON.stringify(out));
+}
+function validSession(token){
+  if(!token) return false;
+  var s = readSessions();
+  return !!(s[token] && s[token] > Date.now());
+}
+
+/* ==========================================================================
+   HELPERS
+   ========================================================================== */
+
+function ss(){ return SpreadsheetApp.getActiveSpreadsheet(); }
+function sheet(n){
+  var s = ss().getSheetByName(n);
+  if(!s) throw new Error('Missing tab "'+n+'". Run setup() once.');
+  return s;
+}
+function rows(name){
+  var s = sheet(name), last = s.getLastRow();
+  if(last < 2) return [];
+  return s.getRange(2,1,last-1,s.getLastColumn()).getValues();
+}
+function pad(v){
+  if(v === '' || v === null || v === undefined) return '';
+  var s = String(v).trim();
+  return /^\d+$/.test(s) ? ('0000'+s).slice(-4) : s;
+}
+function normAttend(v){
+  var s = String(v||'').trim().toLowerCase();
+  if(s === 'yes' || s === 'y' || s === 'true'  || s === 'attending') return 'yes';
+  if(s === 'no'  || s === 'n' || s === 'false' || s === 'declined')  return 'no';
+  return '';
+}
+function isTrue(v){ return v === true || String(v).trim().toUpperCase() === 'TRUE'; }
+function ymd(d){
+  if(!d) return '';
+  if(d instanceof Date) return Utilities.formatDate(d, ss().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+  return String(d).trim();
+}
+function prettyDate(v){
+  var s = ymd(v);
+  if(!s) return '';
+  var parts = s.split('-');
+  if(parts.length !== 3) return s;
+  var d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+  if(isNaN(d)) return s;
+  var months = ['January','February','March','April','May','June','July',
+                'August','September','October','November','December'];
+  return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+function cfg(key, dflt){
+  var v = rows(SH.CONFIG);
+  for(var i=0;i<v.length;i++){
+    if(String(v[i][0]).trim().toLowerCase() === String(key).trim().toLowerCase()){
+      return (v[i][1] === '' || v[i][1] === null) ? dflt : v[i][1];
     }
   }
-  var out = [];
-  var parties = sheet(SHEET_PARTIES).getDataRange().getValues();
-  for(var r=1;r<parties.length;r++){
-    var id = pad(parties[r][P.PARTY]);
-    if(!ids[id] || !parties[r][P.TOKEN]) continue;
-    out.push({ code:String(parties[r][P.TOKEN]), label:String(parties[r][P.NAME] || ('Party '+id)) });
-    if(out.length >= 8) break;
+  return dflt;
+}
+function setCfg(key, value){
+  var s = sheet(SH.CONFIG), v = s.getDataRange().getValues();
+  for(var i=1;i<v.length;i++){
+    if(String(v[i][0]).trim().toLowerCase() === String(key).trim().toLowerCase()){
+      s.getRange(i+1, 2).setValue(value); return;
+    }
   }
-  return {ok:true, matches:out};
+  s.appendRow([key, value, '']);
 }
-
-function buildParty(row){
-  var pv = sheet(SHEET_PARTIES).getRange(row,1,1,12).getValues()[0];
-  var id = pad(pv[P.PARTY]);
-  var guests = sheet(SHEET_GUESTS).getDataRange().getValues();
-  var list = [];
-  for(var i=1;i<guests.length;i++){
-    if(pad(guests[i][G.PARTY]) !== id) continue;
-    var name = String(guests[i][G.FIRST]||'').trim() + ' ' + String(guests[i][G.LAST]||'').trim();
-    if(!name.trim()) continue;
-    list.push({
-      id:        String(guests[i][G.GID] || ('r'+(i+1))),
-      row:       i+1,
-      name:      name.trim(),
-      attending: normAttend(guests[i][G.ATTENDING]),
-      meal:      String(guests[i][G.MEAL] || ''),
-      diet:      String(guests[i][G.DIET] || '')
-    });
-  }
-  var globalOpen = cfg('RSVP Open', true) === true || String(cfg('RSVP Open', true)).toUpperCase() === 'TRUE';
-  return {
-    code:      String(pv[P.TOKEN] || ''),
-    partyId:   id,
-    label:     String(pv[P.NAME] || ('Party '+id)),
-    open:      (pv[P.OPEN] === true || String(pv[P.OPEN]).toUpperCase() === 'TRUE') && globalOpen,
-    responded: list.some(function(g){ return g.attending === 'yes' || g.attending === 'no'; }),
-    note:      String(pv[P.NOTE] || ''),
-    email:     String(pv[P.EMAILS] || '').split(/[,;]/)[0].trim(),
-    guests:    list
-  };
+function newToken(){
+  var abc = 'abcdefghjkmnpqrstuvwxyz23456789', out = '';
+  for(var i=0;i<8;i++) out += abc.charAt(Math.floor(Math.random()*abc.length));
+  return out;
 }
-
-/* ========================== write ======================================== */
-
-function saveRsvp(body){
-  var row = findPartyRow(String(body.token||'').trim());
-  if(!row) return {ok:false, error:"We couldn't find that invitation link."};
-
-  var party = buildParty(row);
-  if(!party.open){
-    return {ok:false, locked:true,
-            error:'RSVPs for your party are closed. Please email us and we will help.'};
-  }
-
-  var gs   = sheet(SHEET_GUESTS);
-  var byId = {};
-  party.guests.forEach(function(g){ byId[g.id] = g; });
-
-  var stamp = new Date();
-  (body.guests || []).forEach(function(sub){
-    var target = byId[sub.id];
-    if(!target) return;
-    var attending = (sub.attending === 'yes') ? 'Yes' : (sub.attending === 'no') ? 'No' : '';
-    gs.getRange(target.row, G.ATTENDING+1).setValue(attending);
-    gs.getRange(target.row, G.MEAL+1).setValue(attending === 'Yes' ? String(sub.meal||'') : '');
-    gs.getRange(target.row, G.DIET+1).setValue(attending === 'Yes' ? String(sub.diet||'') : '');
-    gs.getRange(target.row, G.UPDATED+1).setValue(stamp);
-  });
-
-  var ps = sheet(SHEET_PARTIES);
-  if(body.note)  ps.getRange(row, P.NOTE+1).setValue(String(body.note).slice(0,1000));
-  if(body.email) ps.getRange(row, P.EMAILS+1).setValue(String(body.email).slice(0,200));
-  ps.getRange(row, P.LASTREPLY+1).setValue(stamp);
-
-  SpreadsheetApp.flush();
-  var updated = buildParty(row);
-  try{ notify(updated, body); }catch(err){ }
-  return {ok:true, party:updated};
+function siteUrl(){
+  return String(cfg('Site URL','https://natalie-eric.website')).replace(/\/+$/,'');
 }
-
-function notify(party, body){
-  if(String(cfg('Notify On RSVP', 'TRUE')).toUpperCase() !== 'TRUE') return;
-  var to = String(cfg('Notify Email','') || sendAsAddress() || Session.getEffectiveUser().getEmail());
-  if(!to) return;
-  var yes = party.guests.filter(function(g){ return g.attending === 'yes'; });
-  var lines = party.guests.map(function(g){
-    return '  ' + g.name + ': ' +
-      (g.attending === 'yes' ? 'Attending (' + (g.meal||'no meal chosen') + ')' +
-        (g.diet ? ' [' + g.diet + ']' : '')
-       : g.attending === 'no' ? 'Not attending' : 'No reply');
-  }).join('\n');
-  GmailApp.sendEmail(to,
-    'RSVP: ' + party.label + ' (' + yes.length + ' attending)',
-    party.label + ' just replied.\n\n' + lines +
-      (body.note ? '\n\nTheir note:\n' + body.note : '') +
-      (body.email ? '\n\nContact: ' + body.email : '') +
-      '\n\nParty ' + party.partyId + '\n' + SpreadsheetApp.getActive().getUrl(),
-    mailOptions());
-}
-
-/* ========================== helpers ====================================== */
-
 function sendAsAddress(){
   return String(cfg('Send As','natalie.eric.2027@gmail.com')).trim();
 }
-/* Returns the Send As address only if it is a verified Gmail alias on this
-   account, so a typo can never silently stop the mail going out. */
 function sendAs(){
   var want = sendAsAddress();
   if(!want) return '';
@@ -203,125 +237,813 @@ function sendAs(){
   return '';
 }
 function mailOptions(){
-  var o = { name: 'Natalie & Eric', replyTo: sendAsAddress() };
+  var o = { name:'Natalie & Eric', replyTo: sendAsAddress() };
   var alias = sendAs();
   if(alias) o.from = alias;
   return o;
 }
-
-function ss(){ return SpreadsheetApp.getActiveSpreadsheet(); }
-function sheet(n){
-  var s = ss().getSheetByName(n);
-  if(!s) throw new Error('Missing tab "'+n+'". Run setup() once.');
-  return s;
-}
-function pad(v){
-  if(v === '' || v === null || v === undefined) return '';
-  var s = String(v).trim();
-  return /^\d+$/.test(s) ? ('0000'+s).slice(-4) : s;
-}
-function normAttend(v){
-  var s = String(v||'').trim().toLowerCase();
-  if(s === 'yes' || s === 'y' || s === 'true' || s === 'attending') return 'yes';
-  if(s === 'no'  || s === 'n' || s === 'false' || s === 'declined') return 'no';
-  return '';
-}
-function findPartyRow(token){
-  if(!token) return 0;
-  var v = sheet(SHEET_PARTIES).getDataRange().getValues();
-  for(var i=1;i<v.length;i++){
-    if(String(v[i][P.TOKEN]).trim() === token) return i+1;
-  }
-  return 0;
-}
-function cfg(key, dflt){
-  var v = sheet(SHEET_CONFIG).getDataRange().getValues();
-  for(var i=1;i<v.length;i++){
-    if(String(v[i][0]).trim().toLowerCase() === String(key).trim().toLowerCase()){
-      return v[i][1] === '' ? dflt : v[i][1];
-    }
-  }
-  return dflt;
-}
-function publicConfig(){
-  var meals = String(cfg('Meal Options','Steak & Lobster, Fish, Vegetarian'))
-                .split(',').map(function(s){return s.trim();}).filter(String);
-  var dl = cfg('RSVP Deadline','');
-  if(dl instanceof Date) dl = Utilities.formatDate(dl, ss().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
-  return { meals:meals, deadline:String(dl||''), rsvpOpen:String(cfg('RSVP Open','TRUE')).toUpperCase()==='TRUE' };
-}
-function newToken(){
-  var abc = 'abcdefghjkmnpqrstuvwxyz23456789';
-  var out = '';
-  for(var i=0;i<8;i++) out += abc.charAt(Math.floor(Math.random()*abc.length));
-  return out;
+function logChange(party, guest, field, from, to, by){
+  try{
+    sheet(SH.LOG).appendRow([new Date(), pad(party), guest, field,
+                             String(from||''), String(to||''), by || 'guest']);
+  }catch(e){}
 }
 
 /* ==========================================================================
-   SETUP  -  run once from the Apps Script editor
+   PUBLIC: site content
+   The website renders its schedule, FAQ and meal list from here, so Eric can
+   change them in the sheet without touching code.
    ========================================================================== */
+
+function siteContent(){
+  var schedule = rows(SH.SCHEDULE)
+    .filter(function(r){ return String(r[3]).trim() && isTrue(r[7]); })
+    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
+    .map(function(r){
+      return {
+        start: String(r[1]).trim(), end: String(r[2]).trim(),
+        title: String(r[3]).trim(), place: String(r[4]).trim(),
+        note:  String(r[5]).trim(),
+        tags:  String(r[6]||'').split(',').map(function(s){return s.trim();}).filter(String)
+      };
+    });
+
+  var faq = rows(SH.FAQ)
+    .filter(function(r){ return String(r[1]).trim() && isTrue(r[3]); })
+    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
+    .map(function(r){ return { q:String(r[1]).trim(), a:String(r[2]) }; });
+
+  var meals = rows(SH.MEALS)
+    .filter(function(r){ return String(r[1]).trim() && isTrue(r[2]); })
+    .sort(function(a,b){ return Number(a[0]||0) - Number(b[0]||0); })
+    .map(function(r){ return String(r[1]).trim(); });
+
+  return {
+    schedule: schedule,
+    faq:      faq,
+    meals:    meals,
+    venue:    String(cfg('Venue','Riverway Clubhouse')),
+    address:  String(cfg('Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3')),
+    email:    sendAsAddress()
+  };
+}
+
+/* ==========================================================================
+   PUBLIC: find a party by last name
+   Returns every open party containing that surname, each with the full list
+   of names in it, so a guest can pick the right household. Parties that are
+   not open are invisible, which is also what keeps invite waves private:
+   a guest who has not been invited yet simply is not found, and learns
+   nothing about who was invited first.
+   ========================================================================== */
+
+function findParties(q){
+  var needle = String(q||'').trim().toLowerCase();
+  if(needle.length < 2) return {ok:true, matches:[]};
+
+  var guests  = rows(SH.GUESTS);
+  var parties = rows(SH.PARTIES);
+
+  var members = {};
+  guests.forEach(function(g){
+    var id = pad(g[G.PARTY]);
+    if(!id) return;
+    var name = (String(g[G.FIRST]||'').trim()+' '+String(g[G.LAST]||'').trim()).trim();
+    if(!name) return;
+    (members[id] = members[id] || []).push(name);
+  });
+
+  var hit = {};
+  guests.forEach(function(g){
+    var last  = String(g[G.LAST] ||'').trim().toLowerCase();
+    var first = String(g[G.FIRST]||'').trim().toLowerCase();
+    var full  = (first+' '+last).trim();
+    if(last.indexOf(needle) === 0 || first.indexOf(needle) === 0 || full.indexOf(needle) > -1){
+      hit[pad(g[G.PARTY])] = true;
+    }
+  });
+
+  var out = [];
+  parties.forEach(function(r){
+    var id = pad(r[P.PARTY]);
+    if(!hit[id] || !r[P.TOKEN]) return;
+    if(!isTrue(r[P.OPEN])) return;
+    out.push({
+      code:    String(r[P.TOKEN]),
+      label:   String(r[P.NAME] || ('Party '+id)),
+      members: members[id] || []
+    });
+  });
+  return {ok:true, matches: out.slice(0, 12)};
+}
+
+/* ==========================================================================
+   PUBLIC: load one party
+   ========================================================================== */
+
+function partyRowByToken(token){
+  if(!token) return 0;
+  var v = rows(SH.PARTIES);
+  for(var i=0;i<v.length;i++){
+    if(String(v[i][P.TOKEN]).trim() === String(token).trim()) return i+2;
+  }
+  return 0;
+}
+
+function buildParty(row){
+  var pv = sheet(SH.PARTIES).getRange(row,1,1,PARTY_COLS).getValues()[0];
+  var id = pad(pv[P.PARTY]);
+  var guests = rows(SH.GUESTS);
+  var list = [];
+  guests.forEach(function(g, i){
+    if(pad(g[G.PARTY]) !== id) return;
+    var name = (String(g[G.FIRST]||'').trim()+' '+String(g[G.LAST]||'').trim()).trim();
+    if(!name) return;
+    list.push({
+      id:        String(g[G.GID] || ('r'+(i+2))),
+      row:       i+2,
+      name:      name,
+      attending: normAttend(g[G.ATTENDING]),
+      meal:      String(g[G.MEAL] || ''),
+      diet:      String(g[G.DIET] || '')
+    });
+  });
+  return {
+    code:      String(pv[P.TOKEN] || ''),
+    partyId:   id,
+    label:     String(pv[P.NAME] || ('Party '+id)),
+    open:      isTrue(pv[P.OPEN]),
+    deadline:  ymd(pv[P.DEADLINE]),
+    responded: list.some(function(g){ return g.attending === 'yes' || g.attending === 'no'; }),
+    note:      String(pv[P.NOTE] || ''),
+    email:     String(pv[P.EMAILS] || '').split(/[,;]/)[0].trim(),
+    guests:    list
+  };
+}
+
+function getParty(token){
+  if(!token) return {ok:false, error:'No invitation code was supplied.'};
+  var row = partyRowByToken(token);
+  if(!row) return {ok:false, error:"We couldn't find that invitation link."};
+  return {ok:true, site:siteContent(), party:buildParty(row)};
+}
+
+/* ==========================================================================
+   PUBLIC: save an RSVP
+   Enforces the per-party lock on the server, logs every change, and emails
+   a notification.
+   ========================================================================== */
+
+function saveRsvp(body){
+  var row = partyRowByToken(body.token);
+  if(!row) return {ok:false, error:"We couldn't find that invitation link."};
+
+  var before = buildParty(row);
+  if(!before.open){
+    return {ok:false, locked:true,
+            error:'RSVPs for your party are closed. Please email us and we will help.'};
+  }
+
+  var gs = sheet(SH.GUESTS), byId = {};
+  before.guests.forEach(function(g){ byId[g.id] = g; });
+
+  var stamp = new Date(), changes = [];
+  (body.guests || []).forEach(function(sub){
+    var t = byId[sub.id];
+    if(!t) return;
+    var attending = sub.attending === 'yes' ? 'Yes' : sub.attending === 'no' ? 'No' : '';
+    var meal = attending === 'Yes' ? String(sub.meal||'') : '';
+    var diet = attending === 'Yes' ? String(sub.diet||'') : '';
+
+    if(normAttend(attending) !== t.attending){
+      changes.push([t.name,'Attending', t.attending || '(no reply)', normAttend(attending) || '(cleared)']);
+    }
+    if(meal !== t.meal) changes.push([t.name,'Meal', t.meal || '(none)', meal || '(none)']);
+    if(diet !== t.diet) changes.push([t.name,'Dietary notes', t.diet || '(none)', diet || '(none)']);
+
+    gs.getRange(t.row, G.ATTENDING+1).setValue(attending);
+    gs.getRange(t.row, G.MEAL+1).setValue(meal);
+    gs.getRange(t.row, G.DIET+1).setValue(diet);
+    gs.getRange(t.row, G.UPDATED+1).setValue(stamp);
+  });
+
+  var ps = sheet(SH.PARTIES);
+  if(body.note)  ps.getRange(row, P.NOTE+1).setValue(String(body.note).slice(0,1000));
+  if(body.email) ps.getRange(row, P.EMAILS+1).setValue(String(body.email).slice(0,200));
+  ps.getRange(row, P.LASTREPLY+1).setValue(stamp);
+
+  SpreadsheetApp.flush();
+
+  var isUpdate = before.responded;
+  changes.forEach(function(c){
+    logChange(before.partyId, c[0], c[1], c[2], c[3], isUpdate ? 'guest (changed)' : 'guest');
+  });
+
+  var after = buildParty(row);
+  try{ notifyRsvp(after, body, isUpdate, changes); }catch(e){}
+  return {ok:true, party:after};
+}
+
+function notifyRsvp(party, body, isUpdate, changes){
+  if(String(cfg('Notify On RSVP','TRUE')).toUpperCase() !== 'TRUE') return;
+  var to = String(cfg('Notify Email','') || sendAsAddress());
+  if(!to) return;
+
+  var yes = party.guests.filter(function(g){ return g.attending === 'yes'; });
+  var lines = party.guests.map(function(g){
+    return '  ' + g.name + ': ' +
+      (g.attending === 'yes'
+        ? 'Attending (' + (g.meal || 'no meal chosen') + ')' + (g.diet ? ' [' + g.diet + ']' : '')
+        : g.attending === 'no' ? 'Not attending' : 'No reply');
+  }).join('\n');
+
+  var changeText = '';
+  if(isUpdate && changes.length){
+    changeText = '\n\nThey CHANGED an earlier reply:\n' + changes.map(function(c){
+      return '  ' + c[0] + ' - ' + c[1] + ': ' + c[2] + '  ->  ' + c[3];
+    }).join('\n');
+  }
+
+  GmailApp.sendEmail(to,
+    (isUpdate ? 'RSVP updated: ' : 'RSVP: ') + party.label + ' (' + yes.length + ' attending)',
+    party.label + (isUpdate ? ' changed their reply.' : ' just replied.') + '\n\n' + lines +
+      changeText +
+      (body.note  ? '\n\nTheir note:\n' + body.note : '') +
+      (body.email ? '\n\nContact: ' + body.email : '') +
+      '\n\nParty ' + party.partyId + '\n' + ss().getUrl(),
+    mailOptions());
+}
+
+/* ==========================================================================
+   ADMIN: read everything the portal needs in one call
+   ========================================================================== */
+
+function adminData(){
+  var guests = rows(SH.GUESTS).map(function(r, i){
+    return { row:i+2, party:pad(r[G.PARTY]), first:String(r[G.FIRST]||''),
+             last:String(r[G.LAST]||''), email:String(r[G.EMAIL]||''),
+             phone:String(r[G.PHONE]||''), attending:normAttend(r[G.ATTENDING]),
+             meal:String(r[G.MEAL]||''), diet:String(r[G.DIET]||''),
+             updated: r[G.UPDATED] ? new Date(r[G.UPDATED]).toISOString() : '',
+             id:String(r[G.GID]||''), notes:String(r[G.NOTES]||'') };
+  }).filter(function(g){ return g.first || g.last; });
+
+  var parties = rows(SH.PARTIES).map(function(r, i){
+    return { row:i+2, party:pad(r[P.PARTY]), name:String(r[P.NAME]||''),
+             open:isTrue(r[P.OPEN]), token:String(r[P.TOKEN]||''),
+             link:String(r[P.LINK]||''), wave:String(r[P.WAVE]||''),
+             deadline:ymd(r[P.DEADLINE]), emails:String(r[P.EMAILS]||''),
+             note:String(r[P.NOTE]||''),
+             lastReply: r[P.LASTREPLY] ? new Date(r[P.LASTREPLY]).toISOString() : '',
+             sent:      r[P.SENT]      ? new Date(r[P.SENT]).toISOString()      : '',
+             reminded:  r[P.REMINDED]  ? new Date(r[P.REMINDED]).toISOString()  : '',
+             admin:String(r[P.ADMIN]||'') };
+  }).filter(function(p){ return p.party; });
+
+  var log = rows(SH.LOG).slice(-400).reverse().map(function(r){
+    return { when: r[0] ? new Date(r[0]).toISOString() : '', party:pad(r[1]),
+             guest:String(r[2]||''), field:String(r[3]||''),
+             from:String(r[4]||''), to:String(r[5]||''), by:String(r[6]||'') };
+  });
+
+  return {
+    guests:   guests,
+    parties:  parties,
+    log:      log,
+    schedule: rows(SH.SCHEDULE).map(function(r,i){
+                return { row:i+2, order:r[0], start:String(r[1]||''), end:String(r[2]||''),
+                         title:String(r[3]||''), place:String(r[4]||''),
+                         note:String(r[5]||''), tags:String(r[6]||''), visible:isTrue(r[7]) };
+              }).filter(function(x){ return x.title; }),
+    faq:      rows(SH.FAQ).map(function(r,i){
+                return { row:i+2, order:r[0], q:String(r[1]||''), a:String(r[2]||''), visible:isTrue(r[3]) };
+              }).filter(function(x){ return x.q; }),
+    meals:    rows(SH.MEALS).map(function(r,i){
+                return { row:i+2, order:r[0], meal:String(r[1]||''), visible:isTrue(r[2]) };
+              }).filter(function(x){ return x.meal; }),
+    config:   rows(SH.CONFIG).map(function(r){
+                return { key:String(r[0]||''), value: r[1] instanceof Date ? ymd(r[1]) : String(r[1]===null?'':r[1]),
+                         help:String(r[2]||'') };
+              }).filter(function(x){ return x.key; }),
+    templates: rows(SH.TEMPLATES).map(function(r){
+                return { key:String(r[0]||''), subject:String(r[1]||''), body:String(r[2]||'') };
+               }).filter(function(x){ return x.key; }),
+    sheetUrl: ss().getUrl(),
+    siteUrl:  siteUrl()
+  };
+}
+
+/* ==========================================================================
+   ADMIN: guests
+   ========================================================================== */
+
+function adminSaveGuest(b){
+  var g = b.guest || {}, s = sheet(SH.GUESTS);
+  var party = pad(g.party);
+  if(!party) return {ok:false, error:'Every guest needs a party number.'};
+  if(!String(g.first||'').trim() && !String(g.last||'').trim())
+    return {ok:false, error:'Every guest needs a name.'};
+
+  ensureParty(party);
+
+  var row = Number(g.row || 0);
+  var isNew = !row;
+  var before = null;
+
+  if(isNew){
+    row = firstFreeRow(s, 1);
+    if(!g.id) g.id = 'g-' + party + '-' + Utilities.getUuid().slice(0,6);
+  } else {
+    var cur = s.getRange(row,1,1,GUEST_COLS).getValues()[0];
+    before = { party:pad(cur[G.PARTY]), first:String(cur[G.FIRST]||''), last:String(cur[G.LAST]||''),
+               email:String(cur[G.EMAIL]||''), phone:String(cur[G.PHONE]||''),
+               attending:normAttend(cur[G.ATTENDING]), meal:String(cur[G.MEAL]||''),
+               diet:String(cur[G.DIET]||'') };
+    if(!g.id) g.id = String(cur[G.GID] || ('g-'+party+'-'+Utilities.getUuid().slice(0,6)));
+  }
+
+  var name = (String(g.first||'').trim()+' '+String(g.last||'').trim()).trim();
+  var attending = g.attending === 'yes' ? 'Yes' : g.attending === 'no' ? 'No' : '';
+
+  s.getRange(row,1).setNumberFormat('@');
+  s.getRange(row,1,1,GUEST_COLS).setValues([[
+    party, String(g.first||'').trim(), String(g.last||'').trim(),
+    String(g.email||'').trim(), String(g.phone||'').trim(),
+    attending, String(g.meal||''), String(g.diet||''),
+    (before && before.attending !== normAttend(attending)) || isNew ? new Date() : (s.getRange(row, G.UPDATED+1).getValue() || ''),
+    g.id, String(g.notes||'')
+  ]]);
+
+  if(isNew){
+    logChange(party, name, 'Guest added', '', name, 'admin');
+  } else {
+    if(before.party !== party)             logChange(party, name, 'Moved party', before.party, party, 'admin');
+    if(before.attending !== normAttend(attending))
+      logChange(party, name, 'Attending', before.attending || '(no reply)', normAttend(attending) || '(cleared)', 'admin');
+    if(before.meal  !== String(g.meal||''))  logChange(party, name, 'Meal',  before.meal  || '(none)', String(g.meal||'')  || '(none)', 'admin');
+    if(before.diet  !== String(g.diet||''))  logChange(party, name, 'Dietary notes', before.diet || '(none)', String(g.diet||'') || '(none)', 'admin');
+    if(before.email !== String(g.email||'').trim()) logChange(party, name, 'Email', before.email || '(none)', String(g.email||'') || '(none)', 'admin');
+    if(before.phone !== String(g.phone||'').trim()) logChange(party, name, 'Phone', before.phone || '(none)', String(g.phone||'') || '(none)', 'admin');
+    var oldName = (before.first+' '+before.last).trim();
+    if(oldName !== name) logChange(party, name, 'Name', oldName, name, 'admin');
+  }
+
+  refreshPartyMetrics();
+  return {ok:true, data:adminData()};
+}
+
+function adminDeleteGuest(b){
+  var s = sheet(SH.GUESTS), row = Number(b.row||0);
+  if(!row) return {ok:false, error:'No row given.'};
+  var cur = s.getRange(row,1,1,GUEST_COLS).getValues()[0];
+  var name = (String(cur[G.FIRST]||'')+' '+String(cur[G.LAST]||'')).trim();
+  logChange(pad(cur[G.PARTY]), name, 'Guest removed', name, '', 'admin');
+  s.deleteRow(row);
+  refreshPartyMetrics();
+  return {ok:true, data:adminData()};
+}
+
+function firstFreeRow(s, col){
+  var n = Math.max(s.getMaxRows() - 1, 1);
+  var v = s.getRange(2, col, n, 1).getValues();
+  for(var i=0;i<v.length;i++){ if(String(v[i][0]).trim() === '') return i+2; }
+  return n + 2;
+}
+
+/* ==========================================================================
+   ADMIN: parties
+   ========================================================================== */
+
+function ensureParty(party){
+  var s = sheet(SH.PARTIES), v = rows(SH.PARTIES);
+  for(var i=0;i<v.length;i++){ if(pad(v[i][P.PARTY]) === party) return i+2; }
+
+  var used = {}; v.forEach(function(r){ if(r[P.TOKEN]) used[String(r[P.TOKEN])] = true; });
+  var t; do { t = newToken(); } while(used[t]);
+
+  var row = firstFreeRow(s, 1);
+  s.getRange(row,1).setNumberFormat('@');
+  s.getRange(row, P.PARTY+1).setValue(party);
+  s.getRange(row, P.NAME+1).setValue('Party ' + party);
+  s.getRange(row, P.OPEN+1).insertCheckboxes();
+  s.getRange(row, P.OPEN+1).setValue(false);          /* closed until invited */
+  s.getRange(row, P.TOKEN+1).setValue(t);
+  s.getRange(row, P.LINK+1).setValue(siteUrl() + '/?i=' + t);
+  s.getRange(row, P.WAVE+1).setValue(1);
+  return row;
+}
+
+function partyRowById(party){
+  var v = rows(SH.PARTIES);
+  for(var i=0;i<v.length;i++){ if(pad(v[i][P.PARTY]) === pad(party)) return i+2; }
+  return 0;
+}
+
+function adminSaveParty(b){
+  var p = b.party || {};
+  var id = pad(p.party);
+  if(!id) return {ok:false, error:'A party needs a number.'};
+  var row = partyRowById(id) || ensureParty(id);
+  var s = sheet(SH.PARTIES);
+  var cur = s.getRange(row,1,1,PARTY_COLS).getValues()[0];
+
+  if(isTrue(cur[P.OPEN]) !== !!p.open)
+    logChange(id, '', 'RSVP open', isTrue(cur[P.OPEN]) ? 'yes' : 'no', p.open ? 'yes' : 'no', 'admin');
+  if(ymd(cur[P.DEADLINE]) !== ymd(p.deadline))
+    logChange(id, '', 'RSVP deadline', ymd(cur[P.DEADLINE]) || '(none)', ymd(p.deadline) || '(none)', 'admin');
+
+  s.getRange(row, P.NAME+1).setValue(String(p.name||('Party '+id)));
+  s.getRange(row, P.OPEN+1).insertCheckboxes();
+  s.getRange(row, P.OPEN+1).setValue(!!p.open);
+  s.getRange(row, P.WAVE+1).setValue(p.wave === '' || p.wave === undefined ? '' : Number(p.wave));
+  s.getRange(row, P.DEADLINE+1).setValue(ymd(p.deadline));
+  s.getRange(row, P.EMAILS+1).setValue(String(p.emails||''));
+  s.getRange(row, P.ADMIN+1).setValue(String(p.admin||''));
+  if(!cur[P.TOKEN]){
+    var t = newToken();
+    s.getRange(row, P.TOKEN+1).setValue(t);
+    s.getRange(row, P.LINK+1).setValue(siteUrl() + '/?i=' + t);
+  }
+  refreshPartyMetrics();
+  return {ok:true, data:adminData()};
+}
+
+function adminDeleteParty(b){
+  var id = pad(b.party);
+  var gs = sheet(SH.GUESTS), gv = rows(SH.GUESTS);
+  for(var i=gv.length-1;i>=0;i--){ if(pad(gv[i][G.PARTY]) === id) gs.deleteRow(i+2); }
+  var row = partyRowById(id);
+  if(row) sheet(SH.PARTIES).deleteRow(row);
+  logChange(id, '', 'Party removed', id, '', 'admin');
+  refreshPartyMetrics();
+  return {ok:true, data:adminData()};
+}
+
+/* Rebuilds the live count formulas on every party row. */
+function refreshPartyMetrics(){
+  var p = sheet(SH.PARTIES), n = p.getLastRow() - 1;
+  if(n < 1) return;
+  for(var r = 2; r <= n + 1; r++){
+    if(!String(p.getRange(r, P.PARTY+1).getValue()).trim()) continue;
+    p.getRange(r, P.INVITED+1)
+      .setFormula('=COUNTIF(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"))');
+    p.getRange(r, P.REPLIED+1)
+      .setFormula('=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"<>")');
+    p.getRange(r, P.ATTENDING+1)
+      .setFormula('=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"Yes")');
+  }
+}
+
+/* ==========================================================================
+   ADMIN: content tables (schedule, FAQ, meals) and config
+   The portal sends the whole table back and we rewrite it, which keeps
+   reordering, adding and deleting rows simple and atomic.
+   ========================================================================== */
+
+var TABLES = {
+  schedule: { name: SH.SCHEDULE, cols: 8,
+              map: function(r,i){ return [i+1, r.start, r.end, r.title, r.place, r.note, r.tags, r.visible !== false]; } },
+  faq:      { name: SH.FAQ, cols: 4,
+              map: function(r,i){ return [i+1, r.q, r.a, r.visible !== false]; } },
+  meals:    { name: SH.MEALS, cols: 3,
+              map: function(r,i){ return [i+1, r.meal, r.visible !== false]; } },
+  templates:{ name: SH.TEMPLATES, cols: 3,
+              map: function(r){ return [r.key, r.subject, r.body]; } }
+};
+
+function adminSaveRows(b){
+  var t = TABLES[b.table];
+  if(!t) return {ok:false, error:'Unknown table.'};
+  var s = sheet(t.name);
+  var last = s.getMaxRows();
+  if(last > 1) s.getRange(2,1,last-1,t.cols).clearContent();
+
+  var list = (b.rows || []).filter(function(r){
+    return String(r.title || r.q || r.meal || r.key || '').trim();
+  });
+  if(list.length){
+    s.getRange(2,1,list.length,t.cols).setValues(list.map(t.map));
+    if(b.table !== 'templates'){
+      var flagCol = t.cols;
+      s.getRange(2, flagCol, list.length, 1).insertCheckboxes();
+      s.getRange(2, flagCol, list.length, 1).setValues(list.map(function(r){ return [r.visible !== false]; }));
+    }
+  }
+  logChange('', '', b.table + ' updated', '', list.length + ' rows', 'admin');
+  return {ok:true, data:adminData()};
+}
+
+function adminSaveConfig(b){
+  (b.config || []).forEach(function(c){
+    if(String(c.key||'').trim()) setCfg(c.key, c.value);
+  });
+  logChange('', '', 'Settings updated', '', '', 'admin');
+  return {ok:true, data:adminData()};
+}
+
+/* ==========================================================================
+   EMAIL
+   One wrapper so every message looks like the website. The body accepts
+   blank-line paragraphs, {{name}} {{names}} {{link}} {{deadline}}, and
+   [[Button label]] which becomes a rose button pointing at that party's
+   own invitation link.
+   ========================================================================== */
+
+function esc(s){
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function previewParty(partyId){
+  var row = partyId ? partyRowById(partyId) : 0;
+  if(row) return partyForMail(row);
+  return { partyId:'0000', label:'The Sample Family', names:'Alex and Sam',
+           link: siteUrl() + '/?i=preview1', deadline:'' };
+}
+
+function partyForMail(row){
+  var pv = sheet(SH.PARTIES).getRange(row,1,1,PARTY_COLS).getValues()[0];
+  var id = pad(pv[P.PARTY]);
+  var firsts = rows(SH.GUESTS).filter(function(g){ return pad(g[G.PARTY]) === id; })
+                              .map(function(g){ return String(g[G.FIRST]||'').trim(); })
+                              .filter(String);
+  var names = firsts.length <= 1 ? (firsts[0] || '')
+            : firsts.slice(0,-1).join(', ') + ' and ' + firsts[firsts.length-1];
+  return {
+    row: row, partyId: id,
+    label: String(pv[P.NAME] || ('Party '+id)),
+    names: names,
+    link: String(pv[P.LINK] || (siteUrl() + '/?i=' + pv[P.TOKEN])),
+    deadline: prettyDate(pv[P.DEADLINE]),
+    emails: String(pv[P.EMAILS]||'').split(/[,;]/).map(function(x){return x.trim();}).filter(String)
+  };
+}
+
+function fillTokens(text, party){
+  return String(text||'')
+    .replace(/\{\{\s*name\s*\}\}/gi,     party.label)
+    .replace(/\{\{\s*names\s*\}\}/gi,    party.names || party.label)
+    .replace(/\{\{\s*link\s*\}\}/gi,     party.link)
+    .replace(/\{\{\s*deadline\s*\}\}/gi, party.deadline || 'your earliest convenience');
+}
+
+function renderEmail(subject, body, party){
+  var filled = fillTokens(body, party);
+
+  var blocks = filled.split(/\n\s*\n/).map(function(chunk){
+    var btn = chunk.match(/^\s*\[\[(.+?)\]\]\s*$/);
+    if(btn){
+      return '<p style="margin:30px 0;text-align:center">'+
+        '<a href="'+esc(party.link)+'" style="display:inline-block;background:#9B5F57;color:#ffffff;'+
+        'padding:15px 34px;text-decoration:none;letter-spacing:3px;font-size:11px;'+
+        'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">'+esc(btn[1].trim())+'</a></p>';
+    }
+    return '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#3A2E2B">'+
+           esc(chunk.trim()).replace(/\n/g,'<br>')+'</p>';
+  }).join('');
+
+  return [
+'<div style="margin:0;padding:24px 12px;background:#F4EAE4;font-family:Georgia,\'Times New Roman\',serif">',
+'  <div style="max-width:560px;margin:0 auto;background:#FFFCFA;border:1px solid #E3D2B4">',
+'    <div style="padding:34px 34px 10px;text-align:center">',
+'      <div style="font-family:Georgia,serif;font-size:30px;color:#9B5F57;letter-spacing:1px">',
+'        N<span style="color:#C6A97A;font-style:italic"> &amp; </span>E</div>',
+'      <div style="margin:16px auto 0;height:1px;width:120px;background:#E3D2B4"></div>',
+'    </div>',
+'    <div style="padding:14px 34px 30px">', blocks, '</div>',
+'    <div style="padding:22px 34px 30px;background:#EFE1DA;text-align:center;',
+'                font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2px;',
+'                text-transform:uppercase;color:#7C6862;line-height:2">',
+'      Natalie &amp; Eric &middot; July 11, 2027<br>',
+'      Riverway Clubhouse &middot; Burnaby, BC<br>',
+'      <a href="mailto:'+esc(sendAsAddress())+'" style="color:#9B5F57;letter-spacing:1px">'+esc(sendAsAddress())+'</a>',
+'    </div>',
+'  </div>',
+'</div>'
+  ].join('\n');
+}
+
+function plainFallback(body, party){
+  return fillTokens(body, party).replace(/\[\[(.+?)\]\]/g, '$1: ' + party.link);
+}
+
+/* ==========================================================================
+   ADMIN: send email to selected parties
+   kind: invite | reminder | custom
+   An invite also opens that party's RSVP, which is what makes invite waves
+   work: a party stays closed and undiscoverable until its invitation goes out.
+   ========================================================================== */
+
+function adminSend(b){
+  var ids = (b.partyIds || []).map(pad).filter(String);
+  if(!ids.length) return {ok:false, error:'Pick at least one party.'};
+  if(!String(b.subject||'').trim()) return {ok:false, error:'The email needs a subject.'};
+  if(!String(b.body||'').trim())    return {ok:false, error:'The email needs a body.'};
+
+  var kind = b.kind || 'custom';
+  var s = sheet(SH.PARTIES);
+  var sent = [], skipped = [], failed = [];
+
+  ids.forEach(function(id){
+    var row = partyRowById(id);
+    if(!row){ skipped.push(id + ' (no such party)'); return; }
+    var party = partyForMail(row);
+    if(!party.emails.length){ skipped.push(party.label + ' (no email address)'); return; }
+
+    try{
+      var opts = mailOptions();
+      opts.htmlBody = renderEmail(b.subject, b.body, party);
+      GmailApp.sendEmail(party.emails.join(','),
+                         fillTokens(b.subject, party),
+                         plainFallback(b.body, party),
+                         opts);
+
+      if(kind === 'invite'){
+        s.getRange(row, P.SENT+1).setValue(new Date());
+        s.getRange(row, P.OPEN+1).insertCheckboxes();
+        s.getRange(row, P.OPEN+1).setValue(true);
+        logChange(id, '', 'Invitation sent', '', party.emails.join(', '), 'admin');
+        logChange(id, '', 'RSVP open', 'no', 'yes', 'admin (invite sent)');
+      } else if(kind === 'reminder'){
+        s.getRange(row, P.REMINDED+1).setValue(new Date());
+        logChange(id, '', 'Reminder sent', '', party.emails.join(', '), 'admin');
+      } else {
+        logChange(id, '', 'Email sent', String(b.subject).slice(0,80), party.emails.join(', '), 'admin');
+      }
+      sent.push(party.label);
+      Utilities.sleep(300);
+    }catch(err){
+      failed.push(party.label + ' (' + msg(err) + ')');
+    }
+  });
+
+  SpreadsheetApp.flush();
+  return {ok:true, sent:sent, skipped:skipped, failed:failed, data:adminData()};
+}
+
+/* ==========================================================================
+   SETUP  -  run once, and again after any schema change. Safe to re-run:
+   it never destroys guest data and migrates the older Parties layout.
+   ========================================================================== */
+
 function setup(){
   var s = ss();
   s.setSpreadsheetTimeZone('America/Vancouver');
 
-  /* ---- Guests ---- */
-  var g = s.getSheetByName(SHEET_GUESTS) || s.insertSheet(SHEET_GUESTS, 0);
-  if(g.getLastRow() === 0){
-    g.getRange(1,1,1,10).setValues([[
-      'Party','First Name','Last Name','Email','Phone',
-      'Attending','Meal','Dietary Notes','Updated','Guest ID']]);
-    g.getRange('A2:A').setNumberFormat('@');
-    g.appendRow(['0001','Sample','Guest','','','','','','','g-sample-1']);
-    g.appendRow(['0001','Second','Guest','','','','','','','g-sample-2']);
-  }
-  styleHeader(g, 10);
-  g.setColumnWidth(1,70); g.setColumnWidth(2,120); g.setColumnWidth(3,120);
-  g.setColumnWidth(4,210); g.setColumnWidth(5,130); g.setColumnWidth(6,90);
-  g.setColumnWidth(7,140); g.setColumnWidth(8,200); g.setColumnWidth(9,150); g.setColumnWidth(10,120);
+  /* ---------- Guests ---------- */
+  var g = s.getSheetByName(SH.GUESTS) || s.insertSheet(SH.GUESTS, 0);
+  var gHead = ['Party','First Name','Last Name','Email','Phone','Attending','Meal',
+               'Dietary Notes','Updated','Guest ID','Admin Notes'];
+  if(g.getMaxColumns() < GUEST_COLS) g.insertColumnsAfter(g.getMaxColumns(), GUEST_COLS - g.getMaxColumns());
+  g.getRange(1,1,1,GUEST_COLS).setValues([gHead]);
+  g.getRange('A2:A').setNumberFormat('@');
+  styleHeader(g, GUEST_COLS);
+  [70,120,120,220,150,90,150,200,150,150,200].forEach(function(w,i){ g.setColumnWidth(i+1, w); });
   g.setFrozenRows(1);
-  g.getRange('F2:F1000').setDataValidation(
+  g.getRange('F2:F2000').setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(['Yes','No'], true).setAllowInvalid(true).build());
-  g.getRange('F2:F1000').setHorizontalAlignment('center');
 
-  /* ---- Parties ---- */
-  var p = s.getSheetByName(SHEET_PARTIES) || s.insertSheet(SHEET_PARTIES, 1);
-  if(p.getLastRow() === 0){
-    p.getRange(1,1,1,12).setValues([[
-      'Party','Party Name','RSVP Open','Link Code','Invite Link',
-      'Invited','Replied','Attending','Email(s)','Note From Guests','Last Reply','Invite Sent']]);
-    p.getRange('A2:A').setNumberFormat('@');
+  /* ---------- Parties, with migration from the older column order ---------- */
+  var p = s.getSheetByName(SH.PARTIES) || s.insertSheet(SH.PARTIES, 1);
+  var pHead = ['Party','Party Name','RSVP Open','Link Code','Invite Link','Wave','RSVP Deadline',
+               'Invited','Replied','Attending','Email(s)','Note From Guests','Last Reply',
+               'Invite Sent','Reminder Sent','Admin Notes'];
+  var oldHead = p.getLastColumn() >= 6 ? String(p.getRange(1,6).getValue()).trim() : '';
+  if(oldHead === 'Invited'){
+    var old = p.getLastRow() > 1 ? p.getRange(2,1,p.getLastRow()-1,12).getValues() : [];
+    var moved = old.filter(function(r){ return String(r[0]).trim(); }).map(function(r){
+      return [r[0], r[1], r[2], r[3], r[4], 1, '', '', '', '', r[8], r[9], r[10], r[11], '', ''];
+    });
+    p.clear();
+    if(p.getMaxColumns() < PARTY_COLS) p.insertColumnsAfter(p.getMaxColumns(), PARTY_COLS - p.getMaxColumns());
+    p.getRange(1,1,1,PARTY_COLS).setValues([pHead]);
+    if(moved.length) p.getRange(2,1,moved.length,PARTY_COLS).setValues(moved);
+  } else {
+    if(p.getMaxColumns() < PARTY_COLS) p.insertColumnsAfter(p.getMaxColumns(), PARTY_COLS - p.getMaxColumns());
+    p.getRange(1,1,1,PARTY_COLS).setValues([pHead]);
   }
-  styleHeader(p, 12);
-  p.setColumnWidth(1,70);  p.setColumnWidth(2,190); p.setColumnWidth(3,95);
-  p.setColumnWidth(4,100); p.setColumnWidth(5,300); p.setColumnWidth(6,75);
-  p.setColumnWidth(7,75);  p.setColumnWidth(8,85);  p.setColumnWidth(9,200);
-  p.setColumnWidth(10,260);p.setColumnWidth(11,150);p.setColumnWidth(12,110);
+  p.getRange('A2:A').setNumberFormat('@');
+  styleHeader(p, PARTY_COLS);
+  [70,190,95,100,290,60,120,75,75,85,220,240,140,120,130,200]
+    .forEach(function(w,i){ p.setColumnWidth(i+1, w); });
   p.setFrozenRows(1);
-  p.getRange('C2:C1000').setHorizontalAlignment('center');
+  var pn = Math.max(p.getLastRow()-1, 1);
+  p.getRange(2, P.OPEN+1, pn, 1).insertCheckboxes();
+  p.getRange(2, P.OPEN+1, pn, 1).setHorizontalAlignment('center');
+  p.getRange(2, P.DEADLINE+1, pn, 1).setNumberFormat('@');
 
-  /* ---- Config ---- */
-  var c = s.getSheetByName(SHEET_CONFIG) || s.insertSheet(SHEET_CONFIG, 2);
-  if(c.getLastRow() === 0){
-    c.getRange(1,1,1,3).setValues([['Setting','Value','What it does']]);
-    c.getRange(2,1,6,3).setValues([
-      ['RSVP Open','TRUE','Master switch. FALSE closes RSVPs for everyone, whatever the Parties tab says.'],
-      ['RSVP Deadline','','Optional. Leave blank for "at your earliest convenience". Otherwise yyyy-mm-dd, e.g. 2027-04-15.'],
-      ['Meal Options','Steak & Lobster, Fish, Vegetarian','Comma separated. Changing this changes the dropdown on the website.'],
-      ['Site URL','https://natalie-eric.website','Used to build each party invite link.'],
-      ['Notify Email','','Where RSVP notifications go. Blank = the account that owns this sheet.'],
-      ['Notify On RSVP','TRUE','FALSE stops the notification emails.']
-    ]);
-  }
+  /* ---------- Config ---------- */
+  var c = s.getSheetByName(SH.CONFIG) || s.insertSheet(SH.CONFIG, 2);
+  if(c.getLastRow() === 0) c.getRange(1,1,1,3).setValues([['Setting','Value','What it does']]);
+  c.getRange(1,1,1,3).setValues([['Setting','Value','What it does']]);
+  seedConfig([
+    ['RSVP Open','TRUE','Master switch. FALSE closes RSVPs for everyone, whatever the Parties tab says.'],
+    ['Site URL','https://natalie-eric.website','Used to build each party invite link.'],
+    ['Venue','Riverway Clubhouse','Shown on the schedule and in calendar entries.'],
+    ['Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3','Used for the map and calendar entries.'],
+    ['Notify Email','natalie.eric.2027@gmail.com','Where RSVP notifications go.'],
+    ['Notify On RSVP','TRUE','FALSE stops the notification emails.'],
+    ['Send As','natalie.eric.2027@gmail.com','The Gmail alias every email is sent from. Must be a verified alias on this account.']
+  ]);
   styleHeader(c, 3);
-  c.setColumnWidth(1,160); c.setColumnWidth(2,320); c.setColumnWidth(3,560);
+  [170,330,560].forEach(function(w,i){ c.setColumnWidth(i+1, w); });
   c.setFrozenRows(1);
   c.getRange('C2:C').setWrap(true);
+
+  /* ---------- Schedule ---------- */
+  var sc = s.getSheetByName(SH.SCHEDULE) || s.insertSheet(SH.SCHEDULE);
+  if(sc.getLastRow() === 0){
+    sc.getRange(1,1,1,8).setValues([['Order','Start','End','Title','Location','Note','Tags','Visible']]);
+    sc.getRange(2,1,5,8).setValues([
+      [1,'11:00','12:00','Chinese Tea Ceremony','Riverway Clubhouse','Family and bridal party only.','Formal attire',true],
+      [2,'15:30','17:00','Wedding Ceremony','Riverway Clubhouse','Guests arrive at 3:30pm. The ceremony begins promptly at 4pm.','Formal attire',true],
+      [3,'17:00','18:00','Cocktail Hour','Riverway Clubhouse','','Formal attire',true],
+      [4,'18:00','21:00','Dinner & Reception','Riverway Clubhouse','','Formal attire',true],
+      [5,'21:30','23:59','Dancing','Riverway Clubhouse','','Formal attire',true]
+    ]);
+  }
+  sc.getRange(1,1,1,8).setValues([['Order','Start','End','Title','Location','Note','Tags','Visible']]);
+  styleHeader(sc, 8);
+  [60,70,70,220,180,380,180,80].forEach(function(w,i){ sc.setColumnWidth(i+1, w); });
+  sc.setFrozenRows(1);
+  sc.getRange(2,8,Math.max(sc.getLastRow()-1,1),1).insertCheckboxes();
+  sc.getRange('B2:C').setNumberFormat('@');
+
+  /* ---------- FAQ ---------- */
+  var f = s.getSheetByName(SH.FAQ) || s.insertSheet(SH.FAQ);
+  if(f.getLastRow() === 0){
+    f.getRange(1,1,1,4).setValues([['Order','Question','Answer','Visible']]);
+    f.getRange(2,1,7,4).setValues([
+      [1,"What's the RSVP deadline?", 'Please RSVP at your earliest convenience so we can get an accurate headcount.', true],
+      [2,'Can I bring a guest?', 'Check your invitation to see if you have a plus one.', true],
+      [3,'Are kids welcome?', "We love your little ones. To keep the day intimate, children are welcome only if they're named on your invitation, and you'll find everyone we've saved a seat for listed right there. If you're ever unsure who's included, just reach out and we're happy to help.", true],
+      [4,'Where can I park?', 'Riverway Clubhouse has limited parking on site, so we recommend taking an Uber or Lyft.', true],
+      [5,'What should I wear?', "We'd love to see you in formal attire, think long dresses for the ladies, and suit and tie for the gentlemen.", true],
+      [6,'Is the wedding indoors or outdoors?', 'Our wedding ceremony is outdoors, but our reception will be indoors.', true],
+      [7,"I'm travelling from Brazil, do I need a visa for Canada?",
+        '<p>Usually an eTA rather than a full visa, as long as you are flying in. Brazilian passport holders can apply for an <b>eTA</b> (about CAD $7, approved online, often within minutes) if you either hold a valid US non-immigrant visa on the day you apply, or have held a Canadian visitor visa in the past 10 years.</p><p>Two things worth knowing:</p><ul><li>The eTA only covers arrival <b>by air</b>. If you are driving or coming by bus, train or boat, you need a visitor visa instead.</li><li>Your US visa needs to be valid on the day you apply for the eTA, but it does not have to still be valid when you travel.</li></ul><p>If neither applies to you, you will need a visitor visa, which takes considerably longer and includes biometrics, so please start early. We are happy to send a letter of invitation if it helps.</p>', true]
+    ]);
+  }
+  f.getRange(1,1,1,4).setValues([['Order','Question','Answer','Visible']]);
+  styleHeader(f, 4);
+  [60,320,760,80].forEach(function(w,i){ f.setColumnWidth(i+1, w); });
+  f.setFrozenRows(1);
+  f.getRange(2,4,Math.max(f.getLastRow()-1,1),1).insertCheckboxes();
+  f.getRange('C2:C').setWrap(true);
+
+  /* ---------- Meals ---------- */
+  var m = s.getSheetByName(SH.MEALS) || s.insertSheet(SH.MEALS);
+  if(m.getLastRow() === 0){
+    m.getRange(1,1,1,3).setValues([['Order','Meal','Visible']]);
+    m.getRange(2,1,3,3).setValues([[1,'Steak & Lobster',true],[2,'Fish',true],[3,'Vegetarian',true]]);
+  }
+  m.getRange(1,1,1,3).setValues([['Order','Meal','Visible']]);
+  styleHeader(m, 3);
+  [60,260,80].forEach(function(w,i){ m.setColumnWidth(i+1, w); });
+  m.setFrozenRows(1);
+  m.getRange(2,3,Math.max(m.getLastRow()-1,1),1).insertCheckboxes();
+
+  /* ---------- Log ---------- */
+  var l = s.getSheetByName(SH.LOG) || s.insertSheet(SH.LOG);
+  if(l.getLastRow() === 0) l.appendRow(['When','Party','Guest','What changed','From','To','By']);
+  l.getRange(1,1,1,7).setValues([['When','Party','Guest','What changed','From','To','By']]);
+  styleHeader(l, 7);
+  [160,70,190,190,240,240,160].forEach(function(w,i){ l.setColumnWidth(i+1, w); });
+  l.setFrozenRows(1);
+
+  /* ---------- Templates ---------- */
+  var t = s.getSheetByName(SH.TEMPLATES) || s.insertSheet(SH.TEMPLATES);
+  if(t.getLastRow() === 0){
+    t.getRange(1,1,1,3).setValues([['Key','Subject','Body']]);
+    t.getRange(2,1,3,3).setValues([
+      ['invite', "You're invited to Natalie & Eric's wedding",
+       "Dear {{names}},\n\nTogether with our families, we would love for you to join us as we get married on Sunday, July 11th 2027 at Riverway Clubhouse in Burnaby.\n\nEverything you need is on our website, and the link below is unique to your party, so you can RSVP for everyone in it.\n\n[[Open Invitation]]\n\nWe cannot wait to celebrate with you.\n\nWith love,\nNatalie & Eric"],
+      ['reminder', 'A gentle nudge about our wedding RSVP',
+       "Dear {{names}},\n\nWe are starting to firm up numbers for July 11th and noticed we have not heard from you yet. Whenever you have a moment, your RSVP link is below.\n\n[[RSVP Here]]\n\nNo rush at all, and please just reply to this email if anything is unclear.\n\nWith love,\nNatalie & Eric"],
+      ['thanks', 'Thank you',
+       "Dear {{names}},\n\nThank you so much for celebrating with us. It meant more than we can put in an email.\n\nWith love,\nNatalie & Eric"]
+    ]);
+  }
+  t.getRange(1,1,1,3).setValues([['Key','Subject','Body']]);
+  styleHeader(t, 3);
+  [120,340,760].forEach(function(w,i){ t.setColumnWidth(i+1, w); });
+  t.setFrozenRows(1);
+  t.getRange('C2:C').setWrap(true);
 
   var junk = s.getSheetByName('Sheet1');
   if(junk && s.getSheets().length > 1 && junk.getLastRow() === 0) s.deleteSheet(junk);
 
-  refreshParties();
-  s.toast('Setup complete. Now deploy this script as a web app.','Ready',8);
+  refreshPartyMetrics();
+  s.toast('Setup complete. Deploy a new version, then open /admin.','Ready',8);
+}
+
+function seedConfig(list){
+  var c = sheet(SH.CONFIG);
+  var have = {};
+  rows(SH.CONFIG).forEach(function(r){ have[String(r[0]).trim().toLowerCase()] = true; });
+  list.forEach(function(row){
+    if(!have[row[0].toLowerCase()]) c.appendRow(row);
+  });
 }
 
 function styleHeader(sh, cols){
@@ -331,220 +1053,19 @@ function styleHeader(sh, cols){
   sh.setRowHeight(1, 34);
 }
 
-/* ==========================================================================
-   refreshParties()  -  makes a Parties row + unique link for every party
-   number that appears in Guests. Re-runnable. Never rewrites a live token.
-   ========================================================================== */
-function firstFreeRow(p){
-  var n = Math.max(p.getMaxRows() - 1, 1);
-  var col = p.getRange(2,1,n,1).getValues();
-  for(var i=0;i<col.length;i++){ if(String(col[i][0]).trim() === '') return i+2; }
-  return n + 2;
-}
-
-/* Tidies the Parties tab: pulls every party up so they start at row 2 and
-   removes stray checkboxes on empty rows. Keeps each party's link code. */
-function repairParties(){
-  var p = sheet(SHEET_PARTIES);
-  var n = p.getMaxRows() - 1;
-  if(n < 1) return;
-  var all = p.getRange(2,1,n,12).getValues();
-  var keep = [];
-  for(var i=0;i<all.length;i++){
-    if(String(all[i][0]).trim() !== '') keep.push(all[i]);
-  }
-  p.getRange(2,1,n,12).clearContent();
-  p.getRange(2,3,n,1).clearDataValidations();
-  for(var j=0;j<keep.length;j++){
-    var r = j + 2, k = keep[j];
-    p.getRange(r,1).setNumberFormat('@');
-    p.getRange(r,1).setValue(pad(k[0]));
-    p.getRange(r,2).setValue(k[1]);
-    p.getRange(r,3).insertCheckboxes();
-    p.getRange(r,3).setValue(k[2] === true || String(k[2]).toUpperCase() === 'TRUE');
-    p.getRange(r,4).setValue(k[3]);
-    p.getRange(r,9).setValue(k[8]);
-    p.getRange(r,10).setValue(k[9]);
-    p.getRange(r,11).setValue(k[10]);
-    p.getRange(r,12).setValue(k[11]);
-  }
-  SpreadsheetApp.flush();
-  refreshParties();
-  ss().toast(keep.length + ' parties now start at row 2.','Tidied',6);
-}
-
-function refreshParties(){
-  var g  = sheet(SHEET_GUESTS), p = sheet(SHEET_PARTIES);
-  var gv = g.getDataRange().getValues();
-  var i;
-
-  for(i=1;i<gv.length;i++){
-    var hasName = String(gv[i][G.FIRST]||'').trim() || String(gv[i][G.LAST]||'').trim();
-    if(hasName && !gv[i][G.GID]){
-      var gid = 'g-' + pad(gv[i][G.PARTY]) + '-' + (i+1);
-      g.getRange(i+1, G.GID+1).setValue(gid);
-      gv[i][G.GID] = gid;
-    }
-  }
-
-  var order = [], seen = {}, surnames = {};
-  for(i=1;i<gv.length;i++){
-    var id = pad(gv[i][G.PARTY]);
-    if(!id) continue;
-    if(!seen[id]){ seen[id] = true; order.push(id); surnames[id] = {}; }
-    var ln = String(gv[i][G.LAST]||'').trim();
-    if(ln) surnames[id][ln] = true;
-  }
-
-  var pv = p.getDataRange().getValues();
-  var rowOf = {}, tokens = {};
-  for(var r=1;r<pv.length;r++){
-    var pid = pad(pv[r][P.PARTY]);
-    if(pid) rowOf[pid] = r+1;
-    if(pv[r][P.TOKEN]) tokens[String(pv[r][P.TOKEN])] = true;
-  }
-
-  var site = String(cfg('Site URL','https://natalie-eric.website')).replace(/\/+$/,'');
-  var added = 0;
-
-  order.forEach(function(id){
-    var row = rowOf[id];
-    if(!row){
-      row = firstFreeRow(p);
-      var names = Object.keys(surnames[id]);
-      var label = names.length === 1 ? ('The ' + names[0] + ' Family')
-                : names.length  >  1 ? names.join(' & ')
-                : ('Party ' + id);
-      p.getRange(row,1).setNumberFormat('@');
-      p.getRange(row,1).setValue(id);
-      p.getRange(row,2).setValue(label);
-      p.getRange(row,3).insertCheckboxes();
-      p.getRange(row,3).setValue(true);
-      added++;
-    }
-    if(!p.getRange(row, P.TOKEN+1).getValue()){
-      var t;
-      do { t = newToken(); } while(tokens[t]);
-      tokens[t] = true;
-      p.getRange(row, P.TOKEN+1).setValue(t);
-    }
-    var tok = String(p.getRange(row, P.TOKEN+1).getValue());
-    p.getRange(row, P.LINK+1).setValue(site + '/?i=' + tok);
-
-    p.getRange(row, P.INVITED+1)
-      .setFormula('=COUNTIF(' + SHEET_GUESTS + '!$A:$A,TEXT($A' + row + ',"0000"))');
-    p.getRange(row, P.REPLIED+1)
-      .setFormula('=COUNTIFS(' + SHEET_GUESTS + '!$A:$A,TEXT($A' + row + ',"0000"),' + SHEET_GUESTS + '!$F:$F,"<>")');
-    p.getRange(row, P.ATTENDING+1)
-      .setFormula('=COUNTIFS(' + SHEET_GUESTS + '!$A:$A,TEXT($A' + row + ',"0000"),' + SHEET_GUESTS + '!$F:$F,"Yes")');
-  });
-
-  SpreadsheetApp.flush();
-  ss().toast(added + ' new parties added. Links are in column E.', 'Parties refreshed', 6);
-}
-
-/* ==========================================================================
-   SHARING  -  ready-to-send text for email, WhatsApp and iMessage
-   ========================================================================== */
-function buildShareText(){
-  var p  = sheet(SHEET_PARTIES);
-  var pv = p.getDataRange().getValues();
-  var s  = ss();
-  var sh = s.getSheetByName('Invite Text') || s.insertSheet('Invite Text');
-  sh.clear();
-  sh.getRange(1,1,1,5).setValues([['Party','Party Name','Message to send','WhatsApp','iMessage / SMS']]);
-  styleHeader(sh, 5);
-  sh.setColumnWidth(1,70); sh.setColumnWidth(2,190); sh.setColumnWidth(3,520);
-  sh.setColumnWidth(4,300); sh.setColumnWidth(5,300);
-  sh.setFrozenRows(1);
-
-  var rows = [];
-  for(var r=1;r<pv.length;r++){
-    var link = String(pv[r][P.LINK]||'');
-    if(!link) continue;
-    var msg = "You're invited! Natalie & Eric are getting married on Sunday, July 11, 2027 at "
-            + "Riverway Clubhouse in Burnaby, BC.\n\n"
-            + "Here is your invitation and RSVP link, it is unique to your party:\n" + link
-            + "\n\nWe hope you can join us.";
-    rows.push([
-      pad(pv[r][P.PARTY]),
-      String(pv[r][P.NAME]||''),
-      msg,
-      'https://wa.me/?text=' + encodeURIComponent(msg),
-      'sms:&body=' + encodeURIComponent(msg)
-    ]);
-  }
-  if(rows.length) sh.getRange(2,1,rows.length,5).setValues(rows);
-  sh.getRange('C2:C').setWrap(true);
-  s.toast('Invite Text tab rebuilt for ' + rows.length + ' parties.','Ready',6);
-}
-
-/* ==========================================================================
-   EMAIL  -  sends each party its own link. Only parties whose "Invite Sent"
-   cell is empty, so it is safe to re-run after adding a second batch.
-   ========================================================================== */
-function sendInvites(){
-  var p  = sheet(SHEET_PARTIES);
-  var pv = p.getDataRange().getValues();
-  var sent = 0, skipped = 0;
-
-  for(var r=1;r<pv.length;r++){
-    var emails = String(pv[r][P.EMAILS]||'').split(/[,;]/).map(function(x){return x.trim();}).filter(String);
-    var link   = String(pv[r][P.LINK]||'');
-    if(!emails.length || !link || pv[r][P.SENT]){ skipped++; continue; }
-    var label = String(pv[r][P.NAME]||'Friends');
-
-    var opts = mailOptions();
-    opts.htmlBody =
-        '<div style="font-family:Georgia,serif;color:#3A2E2B;max-width:520px;margin:0 auto;padding:28px;'+
-        'background:#FCF8F4;border:1px solid #E3D2B4;text-align:center">'+
-          '<div style="font-size:13px;letter-spacing:4px;color:#9B5F57;text-transform:uppercase">Together with their families</div>'+
-          '<div style="font-size:44px;line-height:1.1;margin:14px 0 6px">Natalie <span style="color:#C6A97A;font-style:italic">&amp;</span> Eric</div>'+
-          '<div style="font-size:13px;letter-spacing:3px;color:#7C6862;text-transform:uppercase;line-height:2">'+
-            'Sunday, July 11, 2027<br>Riverway Clubhouse &middot; Burnaby, BC</div>'+
-          '<p style="font-size:16px;line-height:1.6;margin:24px 0">Dear ' + label + ',<br><br>'+
-          'We would love for you to be there. Your invitation and RSVP are at the link below, '+
-          'and it is unique to your party.</p>'+
-          '<p><a href="' + link + '" style="display:inline-block;background:#9B5F57;color:#fff;'+
-          'padding:14px 30px;text-decoration:none;letter-spacing:3px;font-size:12px;'+
-          'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">Open your invitation</a></p>'+
-          '<p style="font-size:12px;color:#A2908A;word-break:break-all;margin-top:20px">' + link + '</p>'+
-        '</div>';
-    GmailApp.sendEmail(emails.join(','), "You're invited to Natalie & Eric's wedding",
-      'You are invited to the wedding of Natalie & Eric on Sunday, July 11, 2027 at Riverway Clubhouse, Burnaby BC.\n\nYour invitation and RSVP link: ' + link, opts);
-    p.getRange(r+1, P.SENT+1).setValue(new Date());
-    sent++;
-    Utilities.sleep(400);
-  }
-  ss().toast('Sent ' + sent + ', skipped ' + skipped + ' (already sent or no email).','Invites',8);
-}
-
-function resendTo(partyNumbers){
-  var p = sheet(SHEET_PARTIES), pv = p.getDataRange().getValues();
-  var want = {};
-  (partyNumbers||[]).forEach(function(n){ want[pad(n)] = true; });
-  for(var r=1;r<pv.length;r++){
-    if(want[pad(pv[r][P.PARTY])]) p.getRange(r+1, P.SENT+1).clearContent();
-  }
-}
-
-function openAllRsvps(){  setAllOpen(true);  }
-function closeAllRsvps(){ setAllOpen(false); }
-function setAllOpen(v){
-  var p = sheet(SHEET_PARTIES), n = p.getLastRow()-1;
-  if(n > 0) p.getRange(2, P.OPEN+1, n, 1).setValue(v);
-  ss().toast('All parties set to ' + (v ? 'OPEN' : 'CLOSED') + '.','RSVPs',5);
-}
-
+/* Convenience menu inside the spreadsheet. */
 function onOpen(){
   SpreadsheetApp.getUi().createMenu('Wedding')
-    .addItem('Refresh parties & links','refreshParties')
-    .addItem('Build invite text (WhatsApp / iMessage)','buildShareText')
-    .addItem('Tidy the Parties tab','repairParties')
+    .addItem('Open the admin portal','openAdmin')
     .addSeparator()
-    .addItem('Email invites to new parties','sendInvites')
-    .addSeparator()
-    .addItem('Open RSVPs for everyone','openAllRsvps')
-    .addItem('Close RSVPs for everyone','closeAllRsvps')
+    .addItem('Rebuild counts','refreshPartyMetrics')
+    .addItem('Re-run setup','setup')
     .addToUi();
+}
+function openAdmin(){
+  var url = siteUrl() + '/admin/';
+  SpreadsheetApp.getUi().showModalDialog(
+    HtmlService.createHtmlOutput('<p style="font-family:Arial;font-size:14px">'+
+      '<a href="'+url+'" target="_blank">Open the admin portal</a></p>').setHeight(80),
+    'Admin');
 }

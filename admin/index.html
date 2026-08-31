@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin &middot; Natalie &amp; Eric</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='68' font-family='Georgia,serif' font-size='58' fill='%239B5F57' text-anchor='middle'%3EN%26E%3C/text%3E%3C/svg%3E">
+<style>
+/* ---------- admin shell ---------- */
+body{font-size:16px}
+.a-wrap{max-width:1280px;margin:0 auto;padding:0 1.1rem 5rem}
+.a-top{
+  position:sticky;top:0;z-index:60;background:rgba(251,247,244,.94);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.a-top-in{max-width:1280px;margin:0 auto;padding:.8rem 1.1rem;display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap}
+.a-title{font-family:var(--serif);font-size:1.35rem;font-weight:400;margin-right:auto}
+.a-title span{font-family:var(--sans);font-size:.6rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint);display:block}
+.a-tabs{display:flex;gap:.3rem;flex-wrap:wrap}
+.a-tab{
+  font-family:var(--sans);font-size:.63rem;letter-spacing:.18em;text-transform:uppercase;
+  padding:.6rem .95rem;border:1px solid transparent;background:none;cursor:pointer;color:var(--ink-soft);border-radius:999px;
+}
+.a-tab:hover{color:var(--rose-deep)}
+.a-tab.on{background:var(--rose-deep);color:#fff}
+.a-panel{padding-top:1.8rem}
+.a-panel[hidden]{display:none}
+
+/* ---------- login ---------- */
+.a-login{max-width:400px;margin:14vh auto;text-align:center}
+.a-login .panel{text-align:left}
+
+/* ---------- generic bits ---------- */
+.a-bar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1.4rem}
+.a-bar .grow{margin-left:auto}
+.a-search{max-width:280px}
+.a-note{font-family:var(--sans);font-size:.7rem;letter-spacing:.08em;color:var(--ink-faint)}
+.a-card{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:.85rem}
+.a-head{display:flex;align-items:center;gap:.9rem;padding:1rem 1.2rem;cursor:pointer;flex-wrap:wrap}
+.a-head:hover{background:var(--ground)}
+.a-pid{
+  font-family:var(--sans);font-size:.62rem;letter-spacing:.16em;background:var(--ground-2);
+  border:1px solid var(--line);padding:.3rem .55rem;color:var(--ink-soft);flex:none;
+}
+.a-name{font-family:var(--serif);font-size:1.2rem;flex:1;min-width:160px}
+.a-chip{
+  font-family:var(--sans);font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;
+  padding:.3rem .6rem;border-radius:999px;border:1px solid var(--line);color:var(--ink-soft);white-space:nowrap;
+}
+.a-chip.open{border-color:#7E9C72;color:#4F6B45;background:#EEF4EB}
+.a-chip.shut{border-color:var(--rose);color:var(--rose-deep);background:var(--rose-wash)}
+.a-chip.done{border-color:var(--champagne);color:#8A6B36;background:rgba(227,210,180,.2)}
+.a-body{border-top:1px solid var(--line-soft);padding:1.3rem 1.2rem}
+.a-body[hidden]{display:none}
+
+table.a-t{width:100%;border-collapse:collapse;font-size:.95rem}
+.a-t th{
+  font-family:var(--sans);font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-faint);text-align:left;padding:.5rem .55rem;border-bottom:1px solid var(--line);font-weight:400;
+}
+.a-t td{padding:.45rem .55rem;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+.a-t tr:last-child td{border-bottom:0}
+.a-t input,.a-t select{padding:.5rem .6rem;font-size:.95rem}
+.a-t input[type=text],.a-t input[type=email]{min-width:90px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem}
+@media (max-width:860px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+.field.tight{margin-bottom:.7rem}
+label.lab.sm{font-size:.56rem;letter-spacing:.2em;margin-bottom:.35rem}
+
+.linkbox{
+  display:flex;align-items:center;gap:.5rem;background:var(--ground);border:1px dashed var(--champagne-soft);
+  padding:.55rem .75rem;font-family:var(--sans);font-size:.78rem;color:var(--ink-soft);
+  word-break:break-all;
+}
+.btn.tiny{padding:.45rem .85rem;font-size:.55rem;letter-spacing:.16em}
+.btn.danger{border-color:#B4544A;color:#B4544A}
+@media (hover:hover){ .btn.danger:hover{background:#B4544A;border-color:#B4544A;color:#fff} }
+
+.a-toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:900;
+  background:var(--ink);color:#fff;font-family:var(--sans);font-size:.75rem;letter-spacing:.06em;
+  padding:.85rem 1.4rem;box-shadow:var(--shadow-lg);max-width:90vw;
+}
+.a-toast.bad{background:#8E3E36}
+
+.picker{max-height:320px;overflow:auto;border:1px solid var(--line);background:var(--ground);padding:.5rem}
+.picker label{
+  display:flex;align-items:center;gap:.6rem;padding:.45rem .55rem;font-size:.92rem;cursor:pointer;border-radius:2px;
+}
+.picker label:hover{background:var(--surface)}
+.picker input{width:auto;margin:0}
+.picker .who{color:var(--ink-faint);font-size:.82rem}
+
+.preview{width:100%;height:640px;border:1px solid var(--line);background:#fff}
+.mono-s{font-family:var(--sans);font-size:.72rem;letter-spacing:.06em;color:var(--ink-soft)}
+.logline{display:grid;grid-template-columns:150px 70px 1fr;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--line-soft);font-size:.9rem}
+@media (max-width:760px){.logline{grid-template-columns:1fr}}
+.stat{display:flex;gap:1.6rem;flex-wrap:wrap;margin-bottom:1.6rem}
+.stat div{min-width:90px}
+.stat b{font-family:var(--serif);font-size:1.9rem;font-weight:300;color:var(--rose-deep);display:block;line-height:1}
+.stat span{font-family:var(--sans);font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+
+<!-- ============================ LOGIN ============================ -->
+<div id="login" class="a-login">
+  <span class="mono" aria-hidden="true">
+    <svg width="76" height="41" viewBox="0 0 120 64">
+      <text x="60" y="48" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+            font-size="46" font-weight="300" fill="#9B5F57" letter-spacing="1">N<tspan
+            font-size="33" font-style="italic" fill="#C6A97A" dx="4">&amp;</tspan><tspan dx="4">E</tspan></text>
+    </svg>
+  </span>
+  <div class="rule tight"><i></i></div>
+  <h3 style="margin-bottom:1.6rem">Wedding admin</h3>
+  <div class="panel">
+    <div class="field"><label class="lab" for="u">Username</label>
+      <input type="text" id="u" autocomplete="username" autocapitalize="off"></div>
+    <div class="field"><label class="lab" for="pw">Password</label>
+      <input type="password" id="pw" autocomplete="current-password"></div>
+    <div id="loginErr"></div>
+    <button class="btn wide" id="go">Sign in</button>
+  </div>
+</div>
+
+<!-- ============================ APP ============================ -->
+<div id="app" hidden>
+  <header class="a-top">
+    <div class="a-top-in">
+      <div class="a-title">Natalie &amp; Eric<span>Wedding admin</span></div>
+      <nav class="a-tabs" id="tabs"></nav>
+      <button class="btn ghost tiny" id="signout">Sign out</button>
+    </div>
+  </header>
+
+  <div class="a-wrap">
+    <section class="a-panel" id="p-guests"></section>
+    <section class="a-panel" id="p-email"   hidden></section>
+    <section class="a-panel" id="p-content" hidden></section>
+    <section class="a-panel" id="p-log"     hidden></section>
+    <section class="a-panel" id="p-settings" hidden></section>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Wedding admin. Talks to the Apps Script web app; the password
+   is checked on the server, never here.
+   ============================================================ */
+const API = "https://script.google.com/macros/s/AKfycbxrzsOviri7hb_osxUe82t5I9iHgUK8Lwi2rzYLZ0HYfLwewsIrVqoX2zKuR5_FOaWfpw/exec";
+
+let TOKEN = sessionStorage.getItem('ne_admin') || '';
+let D = null;                      /* everything from the server */
+let openCards = new Set();
+let tab = 'guests';
+
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const h  = s => String(s==null?'':s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(text, bad){
+  const t = document.createElement('div');
+  t.className = 'a-toast' + (bad ? ' bad' : '');
+  t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(()=> t.remove(), bad ? 6000 : 3200);
+}
+
+async function api(action, payload){
+  if(!API){ toast('The admin API URL has not been set yet.', true); throw new Error('no api'); }
+  const body = Object.assign({action, token: TOKEN}, payload || {});
+  const r = await fetch(API, {
+    method:'POST', redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if(j.reauth){ signOut(); throw new Error(j.error); }
+  if(!j.ok) throw new Error(j.error || 'Something went wrong.');
+  if(j.data) D = j.data;
+  return j;
+}
+
+/* ---------------- login ---------------- */
+async function signIn(){
+  const user = $('#u').value.trim(), pass = $('#pw').value;
+  $('#loginErr').innerHTML = '';
+  $('#go').disabled = true; $('#go').textContent = 'Checking…';
+  try{
+    const r = await fetch(API, {
+      method:'POST', redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'login', user, pass})
+    });
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error);
+    TOKEN = j.token;
+    sessionStorage.setItem('ne_admin', TOKEN);
+    await boot();
+  }catch(e){
+    $('#loginErr').innerHTML = '<div class="notice error">'+h(e.message)+'</div>';
+  }finally{
+    $('#go').disabled = false; $('#go').textContent = 'Sign in';
+  }
+}
+function signOut(){
+  try{ api('admin.logout'); }catch(e){}
+  TOKEN = ''; sessionStorage.removeItem('ne_admin');
+  $('#app').hidden = true; $('#login').hidden = false;
+}
+
+async function boot(){
+  try{
+    await api('admin.data');
+    $('#login').hidden = true; $('#app').hidden = false;
+    renderTabs(); render();
+  }catch(e){
+    $('#login').hidden = false; $('#app').hidden = true;
+    if(TOKEN){ TOKEN=''; sessionStorage.removeItem('ne_admin'); }
+  }
+}
+
+/* ---------------- tabs ---------------- */
+const TABS = [['guests','Guests & parties'],['email','Email'],['content','Site content'],
+              ['log','Change log'],['settings','Settings']];
+function renderTabs(){
+  $('#tabs').innerHTML = TABS.map(([k,l]) =>
+    `<button class="a-tab${k===tab?' on':''}" data-tab="${k}">${h(l)}</button>`).join('');
+  $$('#tabs .a-tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderTabs(); render(); });
+}
+function render(){
+  TABS.forEach(([k]) => $('#p-'+k).hidden = (k !== tab));
+  ({guests:renderGuests, email:renderEmail, content:renderContent,
+    log:renderLog, settings:renderSettings})[tab]();
+}
+
+/* ============================================================
+   GUESTS & PARTIES
+   ============================================================ */
+function partyGuests(pid){ return D.guests.filter(g => g.party === pid); }
+
+function renderGuests(){
+  const q = (window.__q || '').trim().toLowerCase();
+  const totals = {
+    guests: D.guests.length,
+    parties: D.parties.length,
+    replied: D.guests.filter(g => g.attending).length,
+    yes: D.guests.filter(g => g.attending === 'yes').length
+  };
+
+  let list = D.parties.slice().sort((a,b) => a.party.localeCompare(b.party));
+  if(q){
+    list = list.filter(p =>
+      p.party.includes(q) || p.name.toLowerCase().includes(q) ||
+      partyGuests(p.party).some(g => (g.first+' '+g.last).toLowerCase().includes(q) ||
+                                     (g.email||'').toLowerCase().includes(q)));
+  }
+
+  $('#p-guests').innerHTML = `
+    <div class="stat">
+      <div><b>${totals.parties}</b><span>Parties</span></div>
+      <div><b>${totals.guests}</b><span>Guests</span></div>
+      <div><b>${totals.replied}</b><span>Replied</span></div>
+      <div><b>${totals.yes}</b><span>Attending</span></div>
+    </div>
+    <div class="a-bar">
+      <input class="a-search" type="text" id="q" placeholder="Search name, email or party"
+             value="${h(window.__q||'')}">
+      <span class="grow"></span>
+      <button class="btn ghost sm" id="addParty">Add a party</button>
+      <a class="btn ghost sm" href="${h(D.sheetUrl)}" target="_blank" rel="noopener">Open the sheet</a>
+    </div>
+    ${list.map(partyCard).join('') || '<p class="a-note">No parties yet. Add one to get started.</p>'}`;
+
+  $('#q').oninput = e => { window.__q = e.target.value; renderGuests(); };
+  $('#addParty').onclick = addParty;
+  wireCards();
+}
+
+function partyCard(p){
+  const gs = partyGuests(p.party);
+  const replied = gs.filter(g => g.attending).length;
+  const yes = gs.filter(g => g.attending === 'yes').length;
+  const isOpen = openCards.has(p.party);
+  return `
+  <div class="a-card" data-party="${h(p.party)}">
+    <div class="a-head" data-toggle>
+      <span class="a-pid">${h(p.party)}</span>
+      <span class="a-name">${h(p.name)}</span>
+      <span class="a-chip">${gs.length} guest${gs.length===1?'':'s'}</span>
+      ${replied ? `<span class="a-chip done">${replied} replied &middot; ${yes} coming</span>` : ''}
+      ${p.wave ? `<span class="a-chip">Wave ${h(p.wave)}</span>` : ''}
+      ${p.sent ? '<span class="a-chip">Invited</span>' : '<span class="a-chip">Not invited</span>'}
+      <span class="a-chip ${p.open?'open':'shut'}">${p.open?'RSVP open':'RSVP closed'}</span>
+    </div>
+    <div class="a-body" ${isOpen?'':'hidden'}>
+      <div class="grid4">
+        <div class="field tight"><label class="lab sm">Party name</label>
+          <input type="text" data-f="name" value="${h(p.name)}"></div>
+        <div class="field tight"><label class="lab sm">Invite wave</label>
+          <input type="text" data-f="wave" value="${h(p.wave)}" placeholder="1"></div>
+        <div class="field tight"><label class="lab sm">RSVP deadline</label>
+          <input type="date" data-f="deadline" value="${h(p.deadline)}"></div>
+        <div class="field tight"><label class="lab sm">RSVP open</label>
+          <select data-f="open">
+            <option value="yes"${p.open?' selected':''}>Open &mdash; they can edit</option>
+            <option value="no"${p.open?'':' selected'}>Closed &mdash; read only</option>
+          </select></div>
+      </div>
+      <div class="grid2">
+        <div class="field tight"><label class="lab sm">Email address(es), comma separated</label>
+          <input type="text" data-f="emails" value="${h(p.emails)}" placeholder="one@example.com, two@example.com"></div>
+        <div class="field tight"><label class="lab sm">Private note (guests never see this)</label>
+          <input type="text" data-f="admin" value="${h(p.admin)}"></div>
+      </div>
+      ${p.note ? `<div class="notice" style="margin:.4rem 0 1rem"><strong>Their note:</strong> ${h(p.note)}</div>` : ''}
+      <div class="linkbox" style="margin:.4rem 0 1.2rem">
+        <span style="flex:1">${h(p.link)}</span>
+        <button class="btn ghost tiny" data-copy="${h(p.link)}">Copy</button>
+      </div>
+
+      <table class="a-t">
+        <thead><tr><th>First</th><th>Last</th><th>Email</th><th>Phone</th>
+          <th>RSVP</th><th>Meal</th><th>Dietary</th><th>Party</th><th></th></tr></thead>
+        <tbody>
+        ${gs.map(g => `
+          <tr data-row="${g.row}">
+            <td><input type="text" data-g="first" value="${h(g.first)}"></td>
+            <td><input type="text" data-g="last" value="${h(g.last)}"></td>
+            <td><input type="email" data-g="email" value="${h(g.email)}"></td>
+            <td><input type="text" data-g="phone" value="${h(g.phone)}" placeholder="+1 604 555 0134"></td>
+            <td><select data-g="attending">
+              <option value=""${g.attending?'':' selected'}>No reply</option>
+              <option value="yes"${g.attending==='yes'?' selected':''}>Accepts</option>
+              <option value="no"${g.attending==='no'?' selected':''}>Declines</option>
+            </select></td>
+            <td><select data-g="meal">
+              <option value="">&mdash;</option>
+              ${D.meals.filter(m=>m.visible).map(m =>
+                `<option${g.meal===m.meal?' selected':''}>${h(m.meal)}</option>`).join('')}
+            </select></td>
+            <td><input type="text" data-g="diet" value="${h(g.diet)}"></td>
+            <td><input type="text" data-g="party" value="${h(g.party)}" style="width:74px"></td>
+            <td><button class="btn ghost tiny danger" data-del="${g.row}">Remove</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="a-bar" style="margin:1.3rem 0 0">
+        <button class="btn ghost sm" data-add>Add a guest</button>
+        <span class="grow"></span>
+        <button class="btn ghost sm" data-mail="invite">${p.sent ? 'Resend invitation' : 'Send invitation'}</button>
+        <button class="btn ghost sm" data-mail="reminder">Send reminder</button>
+        <button class="btn sm" data-save>Save this party</button>
+        <button class="btn ghost tiny danger" data-delparty>Delete party</button>
+      </div>
+      <p class="a-note" style="margin-top:.9rem">
+        ${p.sent ? 'Invitation sent '+fmt(p.sent)+'. ' : 'No invitation sent yet. Sending one opens their RSVP automatically. '}
+        ${p.reminded ? 'Reminder sent '+fmt(p.reminded)+'. ' : ''}
+        ${p.lastReply ? 'Last reply '+fmt(p.lastReply)+'.' : ''}
+      </p>
+    </div>
+  </div>`;
+}
+
+function fmt(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-CA',{month:'short',day:'numeric'}) + ' ' +
+         d.toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit'});
+}
+
+function wireCards(){
+  $$('#p-guests .a-card').forEach(card => {
+    const pid = card.dataset.party;
+    card.querySelector('[data-toggle]').onclick = () => {
+      openCards.has(pid) ? openCards.delete(pid) : openCards.add(pid);
+      renderGuests();
+    };
+    const body = card.querySelector('.a-body');
+    if(!body) return;
+
+    body.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
+      navigator.clipboard.writeText(b.dataset.copy).then(()=>toast('Link copied'),
+        ()=>toast('Could not copy, select it by hand', true));
+    });
+    body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if(!confirm('Remove this guest? This cannot be undone.')) return;
+      await run(() => api('admin.deleteGuest', {row: Number(b.dataset.del)}), 'Guest removed');
+    });
+    body.querySelector('[data-add]').onclick = async () => {
+      await run(() => api('admin.saveGuest', {guest:{party:pid, first:'New', last:'Guest'}}), 'Guest added');
+    };
+    body.querySelector('[data-delparty]').onclick = async () => {
+      if(!confirm('Delete party '+pid+' and every guest in it? This cannot be undone.')) return;
+      openCards.delete(pid);
+      await run(() => api('admin.deleteParty', {party: pid}), 'Party deleted');
+    };
+    body.querySelector('[data-save]').onclick = () => saveCard(card, pid);
+    body.querySelectorAll('[data-mail]').forEach(b => b.onclick = () => {
+      tab = 'email'; window.__mailKind = b.dataset.mail; window.__mailTo = [pid];
+      renderTabs(); render();
+    });
+  });
+}
+
+async function saveCard(card, pid){
+  const f = k => card.querySelector('[data-f="'+k+'"]');
+  try{
+    await api('admin.saveParty', {party:{
+      party: pid, name: f('name').value, wave: f('wave').value,
+      deadline: f('deadline').value, open: f('open').value === 'yes',
+      emails: f('emails').value, admin: f('admin').value
+    }});
+    for(const tr of card.querySelectorAll('tbody tr')){
+      const g = k => tr.querySelector('[data-g="'+k+'"]').value;
+      await api('admin.saveGuest', {guest:{
+        row: Number(tr.dataset.row), party: g('party'), first: g('first'), last: g('last'),
+        email: g('email'), phone: g('phone'), attending: g('attending'),
+        meal: g('meal'), diet: g('diet')
+      }});
+    }
+    toast('Saved');
+    renderGuests();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function addParty(){
+  const id = prompt('New party number, four digits (for example 0042):');
+  if(!id) return;
+  const pid = ('0000'+String(id).replace(/\D/g,'')).slice(-4);
+  openCards.add(pid);
+  await run(() => api('admin.saveParty', {party:{party:pid, name:'Party '+pid, open:false, wave:1}}),
+            'Party '+pid+' created');
+}
+
+async function run(fn, okText){
+  try{ await fn(); toast(okText); render(); }
+  catch(e){ toast(e.message, true); }
+}
+
+/* ============================================================
+   EMAIL
+   ============================================================ */
+function renderEmail(){
+  const kind = window.__mailKind || 'custom';
+  const chosen = new Set(window.__mailTo || []);
+  const tpl = D.templates.find(t => t.key === (kind === 'custom' ? 'invite' : kind))
+           || D.templates[0] || {subject:'', body:''};
+  if(window.__subject === undefined){ window.__subject = tpl.subject; window.__body = tpl.body; }
+
+  const parties = D.parties.slice().sort((a,b)=>a.party.localeCompare(b.party));
+
+  $('#p-email').innerHTML = `
+    <div class="grid2" style="align-items:start;gap:1.6rem">
+      <div>
+        <div class="panel">
+          <div class="a-bar">
+            <select id="tplPick" style="max-width:220px">
+              <option value="">Start from a template&hellip;</option>
+              ${D.templates.map(t => `<option value="${h(t.key)}">${h(t.key)}</option>`).join('')}
+            </select>
+            <select id="kind" style="max-width:220px">
+              <option value="custom"${kind==='custom'?' selected':''}>Just send it</option>
+              <option value="invite"${kind==='invite'?' selected':''}>This is the invitation</option>
+              <option value="reminder"${kind==='reminder'?' selected':''}>This is a reminder</option>
+            </select>
+          </div>
+          <div class="field"><label class="lab" for="subj">Subject</label>
+            <input type="text" id="subj" value="${h(window.__subject)}"></div>
+          <div class="field"><label class="lab" for="body">Message</label>
+            <textarea id="body" style="min-height:300px">${h(window.__body)}</textarea></div>
+          <p class="a-note" style="margin:-.6rem 0 1.2rem;line-height:1.9">
+            <b>{{names}}</b> first names in the party &middot; <b>{{name}}</b> party name &middot;
+            <b>{{link}}</b> their own RSVP link &middot; <b>{{deadline}}</b> their deadline<br>
+            Put <b>[[Open Invitation]]</b> on its own line for a button that links to their party.
+          </p>
+
+          <label class="lab">Who gets this</label>
+          <div class="a-bar" style="margin:.2rem 0 .7rem">
+            <button class="btn ghost tiny" data-pick="all">All</button>
+            <button class="btn ghost tiny" data-pick="none">None</button>
+            <button class="btn ghost tiny" data-pick="uninvited">Not yet invited</button>
+            <button class="btn ghost tiny" data-pick="noreply">Invited, no reply</button>
+            <button class="btn ghost tiny" data-pick="noemail">Missing an email</button>
+          </div>
+          <div class="picker" id="picker">
+            ${parties.map(p => {
+              const gs = partyGuests(p.party);
+              const replied = gs.filter(g=>g.attending).length;
+              return `<label><input type="checkbox" value="${h(p.party)}"${chosen.has(p.party)?' checked':''}>
+                <span>${h(p.party)} &middot; ${h(p.name)}</span>
+                <span class="who">${gs.length} guest${gs.length===1?'':'s'}${replied?' · '+replied+' replied':''}${p.emails?'':' · NO EMAIL'}${p.sent?'':' · not invited'}</span>
+              </label>`;
+            }).join('')}
+          </div>
+          <div class="a-bar" style="margin-top:1.2rem">
+            <span class="a-note" id="count"></span>
+            <span class="grow"></span>
+            <button class="btn ghost sm" id="refreshPrev">Refresh preview</button>
+            <button class="btn sm" id="send">Send</button>
+          </div>
+          <div id="sendOut" style="margin-top:1rem"></div>
+        </div>
+      </div>
+      <div>
+        <label class="lab">Preview, exactly as it will arrive</label>
+        <iframe class="preview" id="prev" title="Email preview"></iframe>
+        <p class="a-note" style="margin-top:.7rem">Rendered by the server using the first party you have ticked, so the links and names are the real ones.</p>
+      </div>
+    </div>`;
+
+  const pick = () => $$('#picker input:checked').map(i => i.value);
+  const sync = () => { $('#count').textContent = pick().length + ' part' + (pick().length===1?'y':'ies') + ' selected'; };
+
+  $('#tplPick').onchange = e => {
+    const t = D.templates.find(x => x.key === e.target.value);
+    if(!t) return;
+    window.__subject = t.subject; window.__body = t.body;
+    if(t.key === 'invite' || t.key === 'reminder') window.__mailKind = t.key;
+    window.__mailTo = pick();
+    renderEmail();
+  };
+  $('#subj').oninput = e => window.__subject = e.target.value;
+  $('#body').oninput = e => window.__body = e.target.value;
+  $('#kind').onchange = e => window.__mailKind = e.target.value;
+
+  $$('#p-email [data-pick]').forEach(b => b.onclick = () => {
+    const mode = b.dataset.pick;
+    $$('#picker input').forEach(i => {
+      const p = D.parties.find(x => x.party === i.value) || {};
+      const gs = partyGuests(i.value);
+      i.checked =
+        mode === 'all'       ? true :
+        mode === 'none'      ? false :
+        mode === 'uninvited' ? !p.sent :
+        mode === 'noreply'   ? (!!p.sent && !gs.some(g => g.attending)) :
+        mode === 'noemail'   ? !p.emails : i.checked;
+    });
+    sync();
+  });
+  $$('#picker input').forEach(i => i.onchange = sync);
+  $('#refreshPrev').onclick = preview;
+  $('#send').onclick = send;
+  sync(); preview();
+}
+
+async function preview(){
+  try{
+    const first = $$('#picker input:checked').map(i=>i.value)[0] || '';
+    const j = await api('admin.preview', {subject: $('#subj').value, body: $('#body').value, partyId: first});
+    $('#prev').srcdoc = j.html;
+  }catch(e){ toast(e.message, true); }
+}
+
+async function send(){
+  const ids = $$('#picker input:checked').map(i => i.value);
+  if(!ids.length) return toast('Tick at least one party first.', true);
+  const kind = $('#kind').value;
+  const what = kind === 'invite' ? 'invitations (this also opens their RSVP)'
+             : kind === 'reminder' ? 'reminders' : 'emails';
+  if(!confirm('Send ' + what + ' to ' + ids.length + ' part' + (ids.length===1?'y':'ies') + '?')) return;
+
+  const btn = $('#send'); btn.disabled = true; btn.textContent = 'Sending…';
+  try{
+    const j = await api('admin.send', {kind, partyIds: ids, subject: $('#subj').value, body: $('#body').value});
+    $('#sendOut').innerHTML =
+      (j.sent.length    ? `<div class="notice ok"><strong>Sent to ${j.sent.length}.</strong><br>${h(j.sent.join(', '))}</div>` : '') +
+      (j.skipped.length ? `<div class="notice"><strong>Skipped ${j.skipped.length}.</strong><br>${h(j.skipped.join(', '))}</div>` : '') +
+      (j.failed.length  ? `<div class="notice error"><strong>Failed ${j.failed.length}.</strong><br>${h(j.failed.join(', '))}</div>` : '');
+    toast('Sent to ' + j.sent.length);
+  }catch(e){
+    $('#sendOut').innerHTML = '<div class="notice error">'+h(e.message)+'</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Send';
+  }
+}
+
+/* ============================================================
+   SITE CONTENT: schedule, FAQ, meals
+   ============================================================ */
+function renderContent(){
+  $('#p-content').innerHTML = `
+    <p class="a-note" style="margin-bottom:1.6rem">These feed the live website. Save and the site picks them up on the next page load.</p>
+
+    <div class="panel" style="margin-bottom:1.6rem">
+      <div class="a-bar"><h3 style="margin:0">Schedule</h3><span class="grow"></span>
+        <button class="btn ghost tiny" data-addrow="schedule">Add an item</button>
+        <button class="btn sm" data-saverows="schedule">Save schedule</button></div>
+      <table class="a-t" id="t-schedule">
+        <thead><tr><th style="width:80px">Start</th><th style="width:80px">End</th><th>Title</th>
+          <th>Location</th><th>Note</th><th>Tags</th><th style="width:70px">Show</th><th></th></tr></thead>
+        <tbody>${D.schedule.map(rowSchedule).join('')}</tbody>
+      </table>
+      <p class="a-note" style="margin-top:.8rem">Times are 24 hour, so 15:30 is 3:30pm. Tags are comma separated and show as small pills.</p>
+    </div>
+
+    <div class="panel" style="margin-bottom:1.6rem">
+      <div class="a-bar"><h3 style="margin:0">Meal options</h3><span class="grow"></span>
+        <button class="btn ghost tiny" data-addrow="meals">Add a meal</button>
+        <button class="btn sm" data-saverows="meals">Save meals</button></div>
+      <table class="a-t" id="t-meals">
+        <thead><tr><th>Meal</th><th style="width:70px">Show</th><th></th></tr></thead>
+        <tbody>${D.meals.map(rowMeal).join('')}</tbody>
+      </table>
+      <p class="a-note" style="margin-top:.8rem">This is the dropdown guests pick from when they RSVP.</p>
+    </div>
+
+    <div class="panel">
+      <div class="a-bar"><h3 style="margin:0">Questions</h3><span class="grow"></span>
+        <button class="btn ghost tiny" data-addrow="faq">Add a question</button>
+        <button class="btn sm" data-saverows="faq">Save questions</button></div>
+      <table class="a-t" id="t-faq">
+        <thead><tr><th style="width:32%">Question</th><th>Answer</th><th style="width:70px">Show</th><th></th></tr></thead>
+        <tbody>${D.faq.map(rowFaq).join('')}</tbody>
+      </table>
+      <p class="a-note" style="margin-top:.8rem">Plain text is fine. Basic HTML like &lt;b&gt; and &lt;a href&gt; also works.</p>
+    </div>`;
+
+  wireRows();
+}
+const chk = v => `<input type="checkbox" data-c="visible"${v!==false?' checked':''} style="width:auto">`;
+const del = `<td><button class="btn ghost tiny danger" data-rmrow>Remove</button></td>`;
+function rowSchedule(r){ return `<tr>
+  <td><input type="text" data-c="start" value="${h(r.start)}"></td>
+  <td><input type="text" data-c="end" value="${h(r.end)}"></td>
+  <td><input type="text" data-c="title" value="${h(r.title)}"></td>
+  <td><input type="text" data-c="place" value="${h(r.place)}"></td>
+  <td><input type="text" data-c="note" value="${h(r.note)}"></td>
+  <td><input type="text" data-c="tags" value="${h(r.tags)}"></td>
+  <td>${chk(r.visible)}</td>${del}</tr>`; }
+function rowMeal(r){ return `<tr>
+  <td><input type="text" data-c="meal" value="${h(r.meal)}"></td>
+  <td>${chk(r.visible)}</td>${del}</tr>`; }
+function rowFaq(r){ return `<tr>
+  <td><input type="text" data-c="q" value="${h(r.q)}"></td>
+  <td><textarea data-c="a" style="min-height:70px">${h(r.a)}</textarea></td>
+  <td>${chk(r.visible)}</td>${del}</tr>`; }
+
+function wireRows(){
+  $$('#p-content [data-rmrow]').forEach(b => b.onclick = () => b.closest('tr').remove());
+  $$('#p-content [data-addrow]').forEach(b => b.onclick = () => {
+    const t = b.dataset.addrow;
+    const html = t==='schedule' ? rowSchedule({start:'',end:'',title:'New item',place:'Riverway Clubhouse',note:'',tags:'Formal attire',visible:true})
+               : t==='meals'    ? rowMeal({meal:'New meal',visible:true})
+               :                  rowFaq({q:'New question',a:'',visible:true});
+    $('#t-'+t+' tbody').insertAdjacentHTML('beforeend', html);
+    wireRows();
+  });
+  $$('#p-content [data-saverows]').forEach(b => b.onclick = async () => {
+    const t = b.dataset.saverows;
+    const rowsOut = Array.from(document.querySelectorAll('#t-'+t+' tbody tr')).map(tr => {
+      const o = {};
+      tr.querySelectorAll('[data-c]').forEach(el => {
+        o[el.dataset.c] = el.type === 'checkbox' ? el.checked : el.value;
+      });
+      return o;
+    });
+    await run(() => api('admin.saveRows', {table: t, rows: rowsOut}), 'Saved');
+  });
+}
+
+/* ============================================================
+   CHANGE LOG
+   ============================================================ */
+function renderLog(){
+  $('#p-log').innerHTML = `
+    <div class="panel">
+      <div class="a-bar"><h3 style="margin:0">Change log</h3><span class="grow"></span>
+        <input class="a-search" type="text" id="lq" placeholder="Filter"></div>
+      <div id="logList">${D.log.map(logRow).join('') || '<p class="a-note">Nothing logged yet.</p>'}</div>
+    </div>`;
+  $('#lq').oninput = e => {
+    const q = e.target.value.toLowerCase();
+    $('#logList').innerHTML = D.log.filter(l =>
+      JSON.stringify(l).toLowerCase().includes(q)).map(logRow).join('') ||
+      '<p class="a-note">Nothing matches.</p>';
+  };
+}
+function logRow(l){
+  return `<div class="logline">
+    <span class="mono-s">${h(fmt(l.when))}</span>
+    <span class="mono-s">${h(l.party||'')}</span>
+    <span>${l.guest ? '<b>'+h(l.guest)+'</b> &middot; ' : ''}${h(l.field)}
+      ${l.from||l.to ? '&mdash; <span class="a-note">'+h(l.from)+' &rarr; '+h(l.to)+'</span>' : ''}
+      <span class="a-note">(${h(l.by)})</span></span>
+  </div>`;
+}
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+function renderSettings(){
+  $('#p-settings').innerHTML = `
+    <div class="panel">
+      <div class="a-bar"><h3 style="margin:0">Settings</h3><span class="grow"></span>
+        <button class="btn sm" id="saveCfg">Save settings</button></div>
+      <table class="a-t" id="t-cfg">
+        <thead><tr><th style="width:22%">Setting</th><th style="width:30%">Value</th><th>What it does</th></tr></thead>
+        <tbody>${D.config.map(c => `<tr>
+          <td><span class="mono-s">${h(c.key)}</span><input type="hidden" data-k value="${h(c.key)}"></td>
+          <td><input type="text" data-v value="${h(c.value)}"></td>
+          <td class="a-note">${h(c.help)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <p class="a-note" style="margin-top:1.2rem">
+        To change the admin password, open the Apps Script project attached to the sheet,
+        go to Project Settings and edit the <b>ADMIN_PASSWORD</b> script property. It is
+        deliberately not editable from this page.
+      </p>
+    </div>`;
+  $('#saveCfg').onclick = async () => {
+    const cfg = Array.from(document.querySelectorAll('#t-cfg tbody tr')).map(tr => ({
+      key: tr.querySelector('[data-k]').value, value: tr.querySelector('[data-v]').value
+    }));
+    await run(() => api('admin.saveConfig', {config: cfg}), 'Settings saved');
+  };
+}
+
+/* ---------------- go ---------------- */
+$('#go').onclick = signIn;
+$('#pw').addEventListener('keydown', e => { if(e.key === 'Enter') signIn(); });
+$('#u').addEventListener('keydown', e => { if(e.key === 'Enter') $('#pw').focus(); });
+$('#signout').onclick = signOut;
+if(TOKEN) boot();
+</script>
+</body>
+</html>

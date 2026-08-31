@@ -465,3 +465,38 @@ footer{
   letter-spacing:.24em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:2rem;
 }
 .back-home:hover{color:var(--rose-deep)}
+
+/* ============================================================
+   MAP
+   ============================================================ */
+.map{
+  margin-top:clamp(2.4rem,6vw,3.6rem);border:1px solid var(--line);
+  background:var(--surface);box-shadow:var(--shadow);overflow:hidden;
+}
+.map iframe{display:block;width:100%;height:clamp(280px,42vw,420px);border:0;filter:saturate(.78)}
+.map-foot{
+  display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;
+  padding:1.15rem clamp(1.2rem,3vw,1.8rem);border-top:1px solid var(--line-soft);
+}
+.map-foot > div{flex:1;min-width:180px}
+.map-name{font-family:var(--serif);font-size:1.2rem;color:var(--ink)}
+.map-addr{font-family:var(--sans);font-size:.72rem;letter-spacing:.1em;color:var(--ink-faint);margin-top:.2rem}
+
+/* ============================================================
+   RSVP LOOKUP RESULTS
+   ============================================================ */
+.lk-hint{
+  font-family:var(--sans);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--ink-soft);margin:.2rem 0 .8rem;
+}
+.lk-hit{
+  display:block;width:100%;text-align:left;cursor:pointer;margin-bottom:.6rem;
+  background:var(--surface);border:1px solid var(--line);padding:1rem 1.2rem;
+  transition:border-color .3s var(--ease),background .3s var(--ease);
+}
+@media (hover:hover){ .lk-hit:hover{border-color:var(--rose);background:var(--ground)} }
+.lk-label{display:block;font-family:var(--serif);font-size:1.25rem;color:var(--ink)}
+.lk-names{
+  display:block;margin-top:.25rem;font-family:var(--sans);font-size:.72rem;
+  letter-spacing:.08em;color:var(--ink-faint);line-height:1.6;
+}
