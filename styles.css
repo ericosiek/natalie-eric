@@ -136,10 +136,10 @@ p:last-child{margin-bottom:0}
 .env-scene{
   position:relative;width:100%;aspect-ratio:1/.63;
   perspective:1500px;
-  /* Clip only along the bottom edge, so the letter can never hang out below
-     the envelope while it is still inside, but the flap is free to swing up
-     past the top. */
-  clip-path:inset(-1500px -1500px 0 -1500px);
+  /* Clip along the envelope's floor, so the letter can never hang out beneath
+     it while it is still inside, while the flap stays free to swing up past
+     the top. The 2px keeps the card's own bottom border off the seam. */
+  clip-path:inset(-1500px -1500px 2px -1500px);
   /* the height is set in pixels from script, so it animates from one real
      number to another; the aspect ratio is only the fallback */
   transition:height 1.15s cubic-bezier(.22,.66,.2,1);
@@ -153,6 +153,7 @@ p:last-child{margin-bottom:0}
   position:absolute;left:0;right:0;bottom:0;
   aspect-ratio:1/.63;z-index:1;
   transform-style:preserve-3d;
+  transition:opacity .7s var(--ease), transform .9s var(--ease);
 }
 .env-shell.front{z-index:4}
 
@@ -162,7 +163,6 @@ p:last-child{margin-bottom:0}
   background:linear-gradient(168deg,#F8EDE5 0%,#F0DED3 58%,#E8D0C3 100%);
   border:1px solid rgba(198,169,122,.55);
   box-shadow:0 30px 66px -26px rgba(120,74,64,.45), inset 0 1px 0 rgba(255,255,255,.7);
-  transition:opacity .6s var(--ease), transform .9s var(--ease);
 }
 
 /* the letter, and the invitation printed on it */
@@ -190,7 +190,6 @@ p:last-child{margin-bottom:0}
   background:linear-gradient(2deg,#F3E3D9 0%,#EEDACE 60%,#E9D2C5 100%);
   border:1px solid rgba(198,169,122,.5);border-top:0;
   box-shadow:0 -2px 10px rgba(120,74,64,.09);
-  transition:opacity .6s var(--ease), transform .9s var(--ease);
 }
 /* the two folded side panels of the pocket */
 .env-front::before{
@@ -208,7 +207,7 @@ p:last-child{margin-bottom:0}
   clip-path:polygon(0 0,100% 0,50% 100%);
   transform-origin:50% 0;transform:rotateX(0deg);
   backface-visibility:hidden;
-  transition:transform .95s cubic-bezier(.4,.02,.24,1) .35s, filter .95s var(--ease) .35s, opacity .5s var(--ease) 2.2s;
+  transition:transform .9s cubic-bezier(.4,.02,.24,1) .35s, filter .9s var(--ease) .35s;
 }
 
 /* the wax seal, holding the flap down */
@@ -238,42 +237,62 @@ p:last-child{margin-bottom:0}
 }
 
 /* ---------- state: sealed ---------- */
-/* Tucked down inside the pocket, out of sight behind the flap. The shift and
-   the scale are measured in script so the letter always lands inside the
-   envelope whatever the fonts do to the card's height. */
-[data-state="sealed"] .env-letter{
-  transform:translateY(var(--seal-shift,26%)) scale(var(--seal-scale,.44));
+/* Deep inside the envelope: the letter's top edge sits below the mouth of
+   the pocket, so nothing of it can show past the flap's tapered sides while
+   the envelope is still sealed. The numbers are measured in script, because
+   the card's height depends on the fonts and the viewport. */
+[data-state="sealed"]  .env-letter,
+[data-state="opening"] .env-letter{
+  transform:translateY(var(--deep-shift,42%)) scale(var(--deep-scale,.44));
 }
-[data-state="sealed"] .card-invite{box-shadow:none}
+[data-state="sealed"] .card-invite,
+[data-state="opening"] .card-invite{box-shadow:none}
 
-/* ---------- state: opening / open ---------- */
+/* Once the flap is out of the way the letter lifts just enough to be seen
+   sitting in the envelope, and waits there. */
+[data-state="peek"] .env-letter{
+  transform:translateY(var(--peek-shift,7%)) scale(var(--peek-scale,.66));
+  transition-delay:0s;
+}
+
+/* ---------- the seal breaks and the flap lifts ---------- */
 [data-state="opening"] .env-seal,
+[data-state="peek"]    .env-seal,
+[data-state="rising"]  .env-seal,
 [data-state="open"]    .env-seal{
   transform:translate(-50%,-150%) scale(.82) rotate(-17deg);opacity:0;
 }
 [data-state="opening"] .env-flap,
+[data-state="peek"]    .env-flap,
+[data-state="rising"]  .env-flap,
 [data-state="open"]    .env-flap{
   transform:rotateX(-168deg);filter:brightness(.93);
 }
-/* the letter holds still inside the open envelope for a beat, then rises */
-[data-state="opening"] .env-letter,
-[data-state="open"]    .env-letter{
+
+/* ---------- the letter is drawn out ---------- */
+[data-state="rising"] .env-letter,
+[data-state="open"]   .env-letter,
+[data-state="leaving"] .env-letter{
   transform:translateY(0) scale(1);
-  transition-delay:1.55s;
+  transition-delay:0s;
 }
-[data-state="opening"] .env-body,
-[data-state="open"]    .env-body,
-[data-state="opening"] .env-front,
-[data-state="open"]    .env-front{
-  opacity:0;transform:translateY(20px);
-  transition-delay:2.25s,2.25s;
+/* the envelope steps aside as the letter comes free */
+[data-state="rising"] .env-shell{
+  opacity:0;transform:translateY(22px);
+  transition:opacity .7s var(--ease) .3s, transform .9s var(--ease) .3s;
 }
-[data-state="opening"] .env-flap,
-[data-state="open"]    .env-flap{opacity:0}
+/* and is taken out of the picture entirely once the letter has settled, so
+   it can never sit over the button */
+[data-state="open"]    .env-shell,
+[data-state="leaving"] .env-shell,
+[data-state="open"]    .env-seal,
+[data-state="leaving"] .env-seal{display:none}
+
 /* the scene grows to the letter's height so the button stays clear of it */
-[data-state="opening"] .env-scene,
-[data-state="open"]    .env-scene{aspect-ratio:auto}
-[data-state="open"]    .env-scene,
+[data-state="rising"] .env-scene,
+[data-state="open"]   .env-scene{aspect-ratio:auto}
+[data-state="rising"] .env-scene,
+[data-state="open"]   .env-scene,
 [data-state="leaving"] .env-scene{clip-path:none}
 
 /* ---------- state: leaving ---------- */
@@ -356,8 +375,10 @@ section.alt{background:var(--ground-2)}
 
 /* ---------- hero ---------- */
 .hero{
-  min-height:clamp(560px,88vh,860px);display:flex;align-items:center;justify-content:center;
-  text-align:center;padding-top:clamp(3rem,8vw,5rem);padding-bottom:clamp(3rem,8vw,5rem);
+  /* the hero now carries a photograph as well, so it no longer needs to
+     reserve most of the viewport on its own */
+  min-height:clamp(460px,72vh,720px);display:flex;align-items:center;justify-content:center;
+  text-align:center;padding-top:clamp(3rem,8vw,5rem);padding-bottom:clamp(2.4rem,5vw,3.4rem);
   background:radial-gradient(115% 80% at 50% -10%,#FDF8F5 0%,var(--ground) 42%,var(--ground-2) 100%);
 }
 .hero-names{margin:.5rem 0 .3rem;letter-spacing:-.005em}
@@ -630,7 +651,7 @@ footer{
    PHOTOGRAPHS
    ============================================================ */
 .photo{
-  margin:clamp(2.6rem,6vw,3.8rem) 0 0;border:1px solid var(--line);
+  margin:clamp(2.2rem,5vw,3rem) 0 0;border:1px solid var(--line);
   background:var(--surface);box-shadow:var(--shadow);overflow:hidden;
 }
 /* width:100% + height:auto keeps the real proportions; the aspect-ratio is

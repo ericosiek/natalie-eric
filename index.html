@@ -128,7 +128,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap narrow center">
     <p class="eyebrow rev">Welcome</p>
     <h2 class="rev">We're so glad you're here</h2>
@@ -144,7 +144,7 @@
 <!-- ==========================================================
      THE VENUE
      ========================================================== -->
-<section id="venue">
+<section class="alt" id="venue">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">Where we'll be</p>
@@ -184,7 +184,7 @@
 <!-- ==========================================================
      SCHEDULE
      ========================================================== -->
-<section class="alt" id="schedule">
+<section id="schedule">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">Sunday, July 11, 2027</p>
@@ -209,7 +209,7 @@
 <!-- ==========================================================
      RSVP
      ========================================================== -->
-<section id="rsvp">
+<section class="alt" id="rsvp">
   <div class="wrap">
     <div class="sec-head rev">
       <p class="eyebrow">Kindly reply</p>
@@ -226,7 +226,7 @@
 <!-- ==========================================================
      FAQ
      ========================================================== -->
-<section class="alt" id="faq">
+<section id="faq">
   <div class="wrap narrow">
     <div class="sec-head rev">
       <p class="eyebrow">Good to know</p>
@@ -920,15 +920,19 @@ const INV = {
       if(btn) btn.textContent = "Enter our website";
       return;
     }
-    this.state("opening");
+    /* One beat at a time, so each step reads on its own:
+         opening  the wax breaks and the flap lifts, letter still hidden
+         peek     the letter is now visible, sitting in the envelope
+         rising   it is drawn out and the envelope steps aside
+         open     settled, and the envelope is gone from the page          */
     if(btn) btn.disabled = true;
-    /* the envelope opens first; the letter only starts to rise once the flap
-       is out of the way, so the scene grows on the same beat */
-    setTimeout(()=> this.fitScene(), 1550);
-    setTimeout(()=>{
+    this.state("opening");
+    this._t1 = setTimeout(()=> this.state("peek"), 1250);
+    this._t2 = setTimeout(()=>{ this.state("rising"); this.fitScene(); }, 1950);
+    this._t3 = setTimeout(()=>{
       this.state("open");
       if(btn){ btn.disabled = false; btn.textContent = "Enter our website"; btn.focus(); }
-    }, 2850);
+    }, 3150);
   },
 
   leave(){
@@ -962,13 +966,15 @@ const INV = {
                          : scene.getBoundingClientRect().height;
     const cardH  = card.offsetHeight;
     if(!sceneH || !cardH) return;
-    /* Sit the letter high in the envelope so that the moment the flap lifts
-       you can see it in there, waiting, before it slides out. Its lower half
-       stays hidden behind the front pocket. */
+    /* Two positions for the letter. Sealed, its top edge sits below the mouth
+       of the pocket so none of it can show past the flap's tapered sides.
+       Peeking, it sits high enough to be plainly visible in the open
+       envelope, with its lower half still tucked in. */
     const scale = Math.min(0.72, (sceneH * 1.15) / cardH);
-    const top   = sceneH * 0.07;
-    st.style.setProperty("--seal-scale", scale.toFixed(4));
-    st.style.setProperty("--seal-shift", Math.round(top) + "px");
+    st.style.setProperty("--peek-scale", scale.toFixed(4));
+    st.style.setProperty("--peek-shift", Math.round(sceneH * 0.07) + "px");
+    st.style.setProperty("--deep-scale", scale.toFixed(4));
+    st.style.setProperty("--deep-shift", Math.round(sceneH * 0.40) + "px");
     /* pin the scene to the envelope's own height so the later growth is a
        plain pixel-to-pixel transition rather than a jump */
     scene.style.height = Math.round(sceneH) + "px";
@@ -977,6 +983,7 @@ const INV = {
   reset(){
     const ov = $("#invitation"), btn = $("#openInvite");
     if(!ov) return;
+    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
     const scene = document.querySelector(".env-scene");
     if(scene) scene.style.height = "";
     ov.classList.remove("gone");
