@@ -553,6 +553,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--rose);ba
 .sum-row .who{color:var(--ink)}
 .sum-row .what{color:var(--ink-soft);font-family:var(--sans);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;text-align:right}
 .sum-row .what.yes{color:var(--rose-deep)}
+/* the detail under an answer: meal, which parts, anything they told us */
+.sum-row .sum-more{
+  display:block;margin-top:.3rem;color:var(--ink-faint);
+  letter-spacing:.02em;text-transform:none;font-size:.82rem;line-height:1.6;
+}
+.sum-row.note .what{max-width:70%}
 
 /* ============================================================
    REGISTRY

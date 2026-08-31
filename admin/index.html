@@ -43,6 +43,8 @@ body{font-size:16px}
 .a-bar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1.4rem}
 .a-bar .grow{margin-left:auto}
 .a-search{max-width:280px}
+.a-count{display:inline-flex;align-items:center;gap:.35rem}
+.a-count select{width:auto;min-width:56px;padding:.45rem .5rem}
 .a-note{font-family:var(--sans);font-size:.7rem;letter-spacing:.08em;color:var(--ink-faint)}
 .a-save{
   font-family:var(--sans);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;
@@ -361,16 +363,32 @@ function renderTotals(){
     <div><b>${D.guests.filter(g => g.attending === 'yes').length}</b><span>Attending</span></div>`;
 }
 
-function renderGuests(){
+/* The parties a search term matches. Kept apart from the drawing so that
+   typing can redraw the list without touching the search box itself. */
+function matchingParties(){
   const q = (window.__q || '').trim().toLowerCase();
+  const list = D.parties.slice().sort((a,b) => a.party.localeCompare(b.party));
+  if(!q) return list;
+  return list.filter(p =>
+    p.party.includes(q) || p.name.toLowerCase().includes(q) ||
+    partyGuests(p.party).some(g => (g.first+' '+g.last).toLowerCase().includes(q) ||
+                                   (g.email||'').toLowerCase().includes(q)));
+}
 
-  let list = D.parties.slice().sort((a,b) => a.party.localeCompare(b.party));
-  if(q){
-    list = list.filter(p =>
-      p.party.includes(q) || p.name.toLowerCase().includes(q) ||
-      partyGuests(p.party).some(g => (g.first+' '+g.last).toLowerCase().includes(q) ||
-                                     (g.email||'').toLowerCase().includes(q)));
-  }
+/* Redraws the cards only. The search input is left exactly as it is, so the
+   caret stays put and you can keep typing. */
+function renderCards(){
+  const box = $('#cards');
+  if(!box) return renderGuests();
+  const list = matchingParties();
+  box.innerHTML = list.map(partyCard).join('') ||
+    '<p class="a-note">Nothing matches that. Clear the search to see everyone.</p>';
+  wireCards();
+  renderTotals();
+}
+
+function renderGuests(){
+  const list = matchingParties();
 
   $('#p-guests').innerHTML = `
     <div class="stat"></div>
@@ -379,7 +397,10 @@ function renderGuests(){
              value="${h(window.__q||'')}">
       <span class="grow"></span>
       <button class="btn ghost sm" id="reload">Reload from sheet</button>
-      <button class="btn ghost sm" id="addParty">Add a party</button>
+      <span class="a-count">
+        <select id="nParty" aria-label="How many parties to add">${countOpts()}</select>
+        <button class="btn ghost sm" id="addParty">Add a party</button>
+      </span>
       <a class="btn ghost sm" href="${h(D.sheetUrl)}" target="_blank" rel="noopener">Open the sheet</a>
     </div>
     <p class="a-note" style="margin:-.7rem 0 1.4rem;line-height:1.8">
@@ -387,13 +408,13 @@ function renderGuests(){
       You can also type rows straight into the Guests tab of the sheet; hit <b>Reload from sheet</b> and
       they appear here with their links already made.
     </p>
-    ${list.map(partyCard).join('') || '<p class="a-note">No parties yet. Add one to get started.</p>'}`;
+    <div id="cards">${list.map(partyCard).join('') || '<p class="a-note">No parties yet. Add one to get started.</p>'}</div>`;
 
   renderTotals();
-  let qt;
   $('#q').oninput = e => {
     window.__q = e.target.value;
-    clearTimeout(qt); qt = setTimeout(renderGuests, 180);
+    clearTimeout(window.__qt);
+    window.__qt = setTimeout(renderCards, 180);
   };
   $('#addParty').onclick = addParty;
   $('#reload').onclick = async () => {
@@ -401,6 +422,13 @@ function renderGuests(){
     await run(() => api('admin.data', {light:true}), 'Reloaded');
   };
   wireCards();
+}
+
+/* 1 to 10, defaulting to 1 — for adding several parties or guests at once */
+function countOpts(sel){
+  let out = '';
+  for(let i=1;i<=10;i++) out += `<option value="${i}"${i===(sel||1)?' selected':''}>${i}</option>`;
+  return out;
 }
 
 function cardHead(p){
@@ -419,6 +447,11 @@ function cardHead(p){
       <span class="a-save" data-state="saved">All changes saved</span>`;
 }
 
+/* the same three answers the RSVP form offers */
+const SCOPES = ['Wedding Ceremony & Reception',
+                'Reception Only (dinner/dancing)',
+                'Wedding Ceremony Only'];
+
 function guestRow(g){
   return `
     <tr data-row="${g.row}">
@@ -435,6 +468,10 @@ function guestRow(g){
         <option value="">&mdash;</option>
         ${D.meals.filter(m=>m.visible).map(m =>
           `<option${g.meal===m.meal?' selected':''}>${h(m.meal)}</option>`).join('')}
+      </select></td>
+      <td><select data-g="scope">
+        <option value="">&mdash;</option>
+        ${SCOPES.map(x => `<option${g.scope===x?' selected':''}>${h(x)}</option>`).join('')}
       </select></td>
       <td><input type="text" data-g="diet" value="${h(g.diet)}"></td>
       <td><input type="text" data-g="party" value="${h(g.party)}" style="width:74px"></td>
@@ -477,17 +514,20 @@ function partyCard(p){
 
       <div class="a-scroll">
       <table class="a-t">
-        <colgroup><col style="width:11%"><col style="width:11%"><col style="width:16%">
-          <col style="width:13%"><col style="width:11%"><col style="width:14%">
-          <col style="width:14%"><col style="width:7%"><col style="width:3%"></colgroup>
+        <colgroup><col style="width:10%"><col style="width:10%"><col style="width:14%">
+          <col style="width:11%"><col style="width:9%"><col style="width:12%">
+          <col style="width:15%"><col style="width:12%"><col style="width:6%"><col style="width:3%"></colgroup>
         <thead><tr><th>First</th><th>Last</th><th>Email</th><th>Phone</th>
-          <th>RSVP</th><th>Meal</th><th>Dietary</th><th>Party</th><th></th></tr></thead>
+          <th>RSVP</th><th>Meal</th><th>Coming to</th><th>Dietary</th><th>Party</th><th></th></tr></thead>
         <tbody>${gs.map(guestRow).join('')}</tbody>
       </table>
       </div>
 
       <div class="a-bar" style="margin:1.3rem 0 0">
-        <button class="btn ghost sm" data-add>Add a guest</button>
+        <span class="a-count">
+          <select data-n aria-label="How many guests to add">${countOpts()}</select>
+          <button class="btn ghost sm" data-add>Add a guest</button>
+        </span>
         <span class="grow"></span>
         <button class="btn ghost sm" data-mail="invite">Send invitation</button>
         <button class="btn ghost sm" data-mail="reminder">Send reminder</button>
@@ -496,6 +536,7 @@ function partyCard(p){
       <p class="a-note" style="margin:1rem 0 0;line-height:1.9">
         ${p.sent ? 'Invitation sent '+fmt(p.sent)+'. ' : 'No invitation sent yet. Sending one opens their RSVP automatically. '}
         ${p.reminded ? 'Reminder sent '+fmt(p.reminded)+'. ' : ''}
+        ${p.thanked ? 'Thank you email sent '+fmt(p.thanked)+'. ' : ''}
         ${p.lastReply ? 'Last reply '+fmt(p.lastReply)+'.' : ''}
       </p>
     </div>
@@ -559,7 +600,7 @@ function wireCards(){
         const g = k => tr.querySelector('[data-g="'+k+'"]').value;
         return { row, party: g('party'), first: g('first'), last: g('last'),
                  email: g('email'), phone: g('phone'), attending: g('attending'),
-                 meal: g('meal'), diet: g('diet') };
+                 meal: g('meal'), scope: g('scope'), diet: g('diet') };
       };
       tr.querySelectorAll('[data-g]').forEach(el => {
         const ev = el.tagName === 'SELECT' ? 'change' : 'input';
@@ -607,18 +648,22 @@ function wireCards(){
       btn.disabled = true;
       try{
         await flush(pid);                               /* keep what is on screen */
+        const sel = card.querySelector('[data-n]');
+        const howMany = Math.max(1, Math.min(10, Number((sel||{}).value || 1)));
         const before = new Set(partyGuests(pid).map(g => g.row));
-        await api('admin.saveGuest', {guest:{party:pid, first:'', last:''}});
-        const added = partyGuests(pid).find(g => !before.has(g.row));
+        for(let k=0;k<howMany;k++){
+          await api('admin.saveGuest', {guest:{party:pid, first:'', last:''}});
+        }
+        const added = partyGuests(pid).filter(g => !before.has(g.row));
         const tbody = card.querySelector('tbody');
-        if(added && tbody){
-          tbody.insertAdjacentHTML('beforeend', guestRow(added));
-          const tr = tbody.lastElementChild;
-          wireRow(tr);
-          const first = tr.querySelector('[data-g="first"]');
+        if(added.length && tbody){
+          added.forEach(g => tbody.insertAdjacentHTML('beforeend', guestRow(g)));
+          [...tbody.querySelectorAll('tr')].slice(-added.length).forEach(wireRow);
+          const first = tbody.querySelectorAll('tr')[tbody.querySelectorAll('tr').length - added.length]
+                          .querySelector('[data-g="first"]');
           if(first) first.focus();
         }else{
-          renderGuests();
+          renderCards();
         }
         refreshCardChrome(pid);
       }catch(err){ toast(err.message, true); }
@@ -641,12 +686,22 @@ function wireCards(){
 
 async function addParty(){
   await flushAll();
+  const howMany = Math.max(1, Math.min(10, Number(($('#nParty')||{}).value || 1)));
   const used = new Set((D.parties||[]).map(p => p.party));
-  let n = 1; while(used.has(('0000'+n).slice(-4))) n++;
-  const pid = ('0000'+n).slice(-4);
-  openCards.add(pid);
-  await run(() => api('admin.saveParty', {party:{party:pid, name:'Party '+pid, open:false, wave:1}}),
-            'Party '+pid+' created');
+  const made = [];
+  try{
+    for(let k=0;k<howMany;k++){
+      let n = 1; while(used.has(('0000'+n).slice(-4))) n++;
+      const pid = ('0000'+n).slice(-4);
+      used.add(pid);
+      /* only the first one springs open, or ten cards would unfold at once */
+      if(k === 0) openCards.add(pid);
+      await api('admin.saveParty', {party:{party:pid, name:'Party '+pid, open:false, wave:1}});
+      made.push(pid);
+    }
+    toast(made.length === 1 ? 'Party '+made[0]+' created' : made.length+' parties created');
+    render();
+  }catch(e){ toast(e.message, true); }
 }
 
 async function run(fn, okText){
@@ -657,6 +712,14 @@ async function run(fn, okText){
 /* ============================================================
    EMAIL
    ============================================================ */
+/* Every wave that actually appears in the data, in order, so this keeps
+   working however many waves get added later. */
+function waves(){
+  const seen = new Set();
+  (D.parties||[]).forEach(p => { const w = String(p.wave||'').trim(); if(w) seen.add(w); });
+  return [...seen].sort((a,b) => (Number(a)||99) - (Number(b)||99) || a.localeCompare(b));
+}
+
 function renderEmail(){
   const kind = window.__mailKind || 'custom';
   const chosen = new Set(window.__mailTo || []);
@@ -675,10 +738,12 @@ function renderEmail(){
               <option value="">Start from a template&hellip;</option>
               ${D.templates.map(t => `<option value="${h(t.key)}">${h(t.key)}</option>`).join('')}
             </select>
-            <select id="kind" style="max-width:220px">
+            <select id="kind" style="max-width:260px">
               <option value="custom"${kind==='custom'?' selected':''}>Just send it</option>
               <option value="invite"${kind==='invite'?' selected':''}>This is the invitation</option>
               <option value="reminder"${kind==='reminder'?' selected':''}>This is a reminder</option>
+              <option value="thanks"${kind==='thanks'?' selected':''}>This is a thank you</option>
+              <option value="thanks-gift"${kind==='thanks-gift'?' selected':''}>This is a thank you (for a gift)</option>
             </select>
           </div>
           <div class="field"><label class="lab" for="subj">Subject</label>
@@ -699,7 +764,13 @@ function renderEmail(){
             <button class="btn ghost tiny" data-pick="noreply">Invited, no reply</button>
             <button class="btn ghost tiny" data-pick="attending">Attending</button>
             <button class="btn ghost tiny" data-pick="declined">Declined</button>
+            <button class="btn ghost tiny" data-pick="thanked">Not yet thanked</button>
             <button class="btn ghost tiny" data-pick="noemail">Missing an email</button>
+          </div>
+          <div class="a-bar" style="margin:0 0 .9rem">
+            <span class="a-note" style="margin:0 .2rem 0 0">Waves</span>
+            ${waves().map(w => `<button class="btn ghost tiny" data-wave="${h(w)}">Wave ${h(w)}</button>`).join('')
+              || '<span class="a-note">no waves set yet</span>'}
           </div>
           <div class="picker" id="picker">
             ${parties.map(p => {
@@ -735,7 +806,10 @@ function renderEmail(){
     const t = D.templates.find(x => x.key === e.target.value);
     if(!t) return;
     window.__subject = t.subject; window.__body = t.body;
-    if(t.key === 'invite' || t.key === 'reminder') window.__mailKind = t.key;
+    /* picking a template also sets what it counts as, so the party gets the
+       right stamp — invitation, reminder or thank you */
+    if(['invite','reminder','thanks','thanks-gift'].indexOf(t.key) !== -1) window.__mailKind = t.key;
+    if(t.key === 'blank') window.__mailKind = 'custom';
     window.__mailTo = pick();
     renderEmail();
   };
@@ -757,7 +831,20 @@ function renderEmail(){
         mode === 'attending' ? gs.some(g => g.attending === 'yes') :
         /* replied, and nobody in the party is coming */
         mode === 'declined'  ? (gs.some(g => g.attending) && !gs.some(g => g.attending === 'yes')) :
+        /* replied yes, and no thank you has gone out yet */
+        mode === 'thanked'   ? (gs.some(g => g.attending === 'yes') && !p.thanked) :
         mode === 'noemail'   ? !p.emails : i.checked;
+    });
+    sync();
+  });
+
+  /* a wave button ticks everyone in that wave, on top of whatever is already
+     ticked, so two waves can go out in one send */
+  $$('#p-email [data-wave]').forEach(b => b.onclick = () => {
+    const w = b.dataset.wave;
+    $$('#picker input').forEach(i => {
+      const p = D.parties.find(x => x.party === i.value) || {};
+      if(String(p.wave||'').trim() === w) i.checked = true;
     });
     sync();
   });
@@ -815,16 +902,11 @@ function renderContent(){
         <tbody>${D.schedule.map(rowSchedule).join('')}</tbody>
       </table>
       <p class="a-note" style="margin-top:.8rem">Times are 24 hour, so 15:30 is 3:30pm. Tags are comma separated and show as small pills.</p>
-      <p class="a-note" style="margin-top:.6rem">Saving here changes three things at once: the schedule on the
-        website, every calendar entry guests download from now on, and the live calendar feed. Guests who
-        <b>subscribed</b> get the new times on their own, usually within a few hours; anyone who saved a one&#8209;off
-        copy keeps the old times until they add it again, so for a real change of time it is still worth emailing them.
-        Keeping an item&rsquo;s title the same lets calendars update that entry in place rather than leaving a stale
-        copy beside it.</p>
-      <p class="a-note" style="margin-top:.6rem">Calendar feed:
-        <code id="icsUrl" style="word-break:break-all"></code>
-        <button class="btn ghost tiny" id="icsCopy" style="margin-left:.5rem">Copy</button>
-        <a class="btn ghost tiny" id="icsOpen" href="#" target="_blank" rel="noopener" style="margin-left:.3rem">Check it</a></p>
+      <p class="a-note" style="margin-top:.6rem">Saving here updates the schedule on the website straight away, and
+        every calendar entry a guest saves from that moment on carries the new times. Anyone who already added the
+        old times keeps them &mdash; a calendar entry is a copy, not a subscription &mdash; so if a time really moves,
+        email them as well. Keeping an item&rsquo;s title the same lets a calendar update that entry in place rather
+        than leaving a stale copy beside it.</p>
     </div>
 
     <div class="panel" style="margin-bottom:1.6rem">
@@ -852,14 +934,6 @@ function renderContent(){
     </div>`;
 
   wireRows();
-  const feed = API + '?action=ics';
-  const u = $('#icsUrl'); if(u) u.textContent = feed;
-  const o = $('#icsOpen'); if(o) o.href = feed;
-  const c = $('#icsCopy');
-  if(c) c.onclick = async () => {
-    try{ await navigator.clipboard.writeText(feed); toast('Calendar link copied'); }
-    catch(e){ toast('Could not copy &mdash; select the link instead', true); }
-  };
 }
 const chk = v => `<input type="checkbox" data-c="visible"${v!==false?' checked':''} style="width:auto">`;
 const del = `<td><button class="btn ghost tiny danger" data-rmrow>Remove</button></td>`;

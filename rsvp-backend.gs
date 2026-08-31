@@ -26,11 +26,29 @@ var SH = {
 
 /* column indexes, zero based */
 var G = { PARTY:0, FIRST:1, LAST:2, EMAIL:3, PHONE:4, ATTENDING:5, MEAL:6,
-          DIET:7, UPDATED:8, GID:9, NOTES:10 };
+          SCOPE:7, DIET:8, UPDATED:9, GID:10, NOTES:11 };
 var P = { PARTY:0, NAME:1, OPEN:2, TOKEN:3, LINK:4, WAVE:5, DEADLINE:6,
           INVITED:7, REPLIED:8, ATTENDING:9, EMAILS:10, NOTE:11, LASTREPLY:12,
-          SENT:13, REMINDED:14, ADMIN:15 };
-var GUEST_COLS = 11, PARTY_COLS = 16;
+          SENT:13, REMINDED:14, THANKED:15, ADMIN:16 };
+var GUEST_COLS = 12, PARTY_COLS = 17;
+
+/* Which parts of the day a guest is coming to. The first is the usual answer,
+   so it is what a blank falls back to. */
+var SCOPES = ['Wedding Ceremony & Reception',
+              'Reception Only (dinner/dancing)',
+              'Wedding Ceremony Only'];
+function normScope(v){
+  var t = String(v == null ? '' : v).trim();
+  if(!t) return '';
+  for(var i=0;i<SCOPES.length;i++){
+    if(SCOPES[i].toLowerCase() === t.toLowerCase()) return SCOPES[i];
+  }
+  /* tolerant of a hand-typed shorthand in the sheet */
+  var l = t.toLowerCase();
+  if(l.indexOf('reception only') === 0 || l === 'reception') return SCOPES[1];
+  if(l.indexOf('ceremony only')  === 0 || l === 'ceremony')  return SCOPES[2];
+  return SCOPES[0];
+}
 
 var SESSION_HOURS = 12;
 
@@ -44,7 +62,6 @@ function doGet(e){
     switch(p.action || 'party'){
       case 'ping':   return json({ok:true, pong:true, time:new Date().toISOString()});
       case 'site':   return json({ok:true, site:siteContent()});
-      case 'ics':    return icsFeed(p);
       case 'find':   return json(findParties(p.q));
       case 'party':  return json(getParty(p.token));
       default:       return json({ok:false, error:'Unknown action'});
@@ -396,84 +413,6 @@ function scheduleState(){
   return { items:items, rev:rev, at:at };
 }
 
-/* ---------- .ics ---------- */
-
-function icsEsc(s){
-  return String(s==null?'':s)
-    .replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,')
-    .replace(/\r?\n/g,'\\n');
-}
-/* RFC 5545 wants no line longer than 75 characters; continuations begin with
-   a single space. Folding happens at character boundaries so nothing splits
-   mid-letter. */
-function icsFold(line){
-  if(line.length <= 74) return line;
-  var out = line.slice(0,74), rest = line.slice(74);
-  while(rest.length > 73){ out += '\r\n ' + rest.slice(0,73); rest = rest.slice(73); }
-  return out + '\r\n ' + rest;
-}
-/* A clock time on the wedding day, in the venue's own offset, written in UTC
-   so that no calendar anywhere can misread it. */
-function icsStampFor(hhmm, plusDay){
-  var t = String(hhmm||'').trim();
-  if(!/^\d{1,2}:\d{2}$/.test(t)) return '';
-  if(t.length === 4) t = '0' + t;
-  var d = new Date(weddingDate() + 'T' + t + ':00' + weddingTz());
-  if(isNaN(d)) return '';
-  if(plusDay) d = new Date(d.getTime() + 864e5);
-  return Utilities.formatDate(d, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
-}
-
-function buildIcs(state, only){
-  var items = state.items.filter(function(ev){ return !only || ev.uid === only; });
-  var venue = String(cfg('Venue','Riverway Clubhouse'));
-  var addr  = String(cfg('Venue Address',''));
-  var site  = siteUrl();
-  var name  = 'Natalie & Eric';
-  var when  = prettyDateFull(weddingDate());
-
-  var L = ['BEGIN:VCALENDAR','VERSION:2.0',
-           'PRODID:-//Natalie and Eric//Wedding//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
-           'X-WR-CALNAME:' + name,          /* shown as the calendar's name; left unescaped */
-           'X-WR-CALDESC:' + icsEsc(when + '. This calendar keeps itself up to date.'),
-           'X-WR-TIMEZONE:America/Vancouver',
-           'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
-           'X-PUBLISHED-TTL:PT6H'];
-
-  items.forEach(function(ev){
-    var start = icsStampFor(ev.start);
-    if(!start) return;
-    var end = icsStampFor(ev.end) || start;
-    if(end <= start) end = icsStampFor(ev.end, true) || start;   /* runs past midnight */
-    var where = [ev.place || venue, addr].filter(String).join(', ');
-    var desc  = [ev.note, ev.tags.join(' \u00b7 ')].filter(String).join('\n');
-    L.push('BEGIN:VEVENT',
-      'UID:' + ev.uid + '-natalie-eric@natalie-eric.website',
-      'SEQUENCE:' + state.rev,
-      'DTSTAMP:' + state.at,
-      'LAST-MODIFIED:' + state.at,
-      'DTSTART:' + start,
-      'DTEND:' + end,
-      'SUMMARY:' + icsEsc(name + ': ' + ev.title),
-      'LOCATION:' + icsEsc(where),
-      'DESCRIPTION:' + icsEsc(desc),
-      'URL:' + site + '/#schedule',
-      'STATUS:CONFIRMED','TRANSP:OPAQUE','END:VEVENT');
-  });
-
-  L.push('END:VCALENDAR');
-  return L.map(icsFold).join('\r\n') + '\r\n';
-}
-
-/* The live feed. Guests subscribe to this once and their calendar re-reads it
-   on its own, so every later change to the schedule reaches them. */
-function icsFeed(p){
-  var only = p && p.e ? String(p.e).trim() : '';
-  var body = buildIcs(scheduleState(), only);
-  return ContentService.createTextOutput(body)
-                       .setMimeType(ContentService.MimeType.ICAL);
-}
-
 /* ==========================================================================
    PUBLIC: find a party by last name
    Returns every open party containing that surname, each with the full list
@@ -551,6 +490,7 @@ function buildParty(row){
       name:      name,
       attending: normAttend(g[G.ATTENDING]),
       meal:      String(g[G.MEAL] || ''),
+      scope:     normScope(g[G.SCOPE]),
       diet:      String(g[G.DIET] || '')
     });
   });
@@ -598,18 +538,21 @@ function saveRsvp(body){
     var t = byId[sub.id];
     if(!t) return;
     var attending = sub.attending === 'yes' ? 'Yes' : sub.attending === 'no' ? 'No' : '';
-    var meal = attending === 'Yes' ? String(sub.meal||'') : '';
-    var diet = attending === 'Yes' ? String(sub.diet||'') : '';
+    var meal  = attending === 'Yes' ? String(sub.meal||'') : '';
+    var scope = attending === 'Yes' ? normScope(sub.scope) : '';
+    var diet  = attending === 'Yes' ? String(sub.diet||'') : '';
 
     if(normAttend(attending) !== t.attending){
       changes.push([t.name,'Attending', t.attending || '(no reply)', normAttend(attending) || '(cleared)']);
     }
     if(meal !== t.meal) changes.push([t.name,'Meal', t.meal || '(none)', meal || '(none)']);
+    if(scope !== t.scope) changes.push([t.name,'Coming to', t.scope || '(none)', scope || '(none)']);
     if(diet !== t.diet) changes.push([t.name,'Dietary notes', t.diet || '(none)', diet || '(none)']);
 
-    gs.getRange(t.row, G.ATTENDING+1, 1, 3).setNumberFormat('@');
+    gs.getRange(t.row, G.ATTENDING+1, 1, 4).setNumberFormat('@');
     gs.getRange(t.row, G.ATTENDING+1).setValue(attending);
     gs.getRange(t.row, G.MEAL+1).setValue(meal);
+    gs.getRange(t.row, G.SCOPE+1).setValue(scope);
     gs.getRange(t.row, G.DIET+1).setValue(diet);
     gs.getRange(t.row, G.UPDATED+1).setValue(stamp);
   });
@@ -807,7 +750,7 @@ function adminData(light){
     return { row:i+2, party:pad(r[G.PARTY]), first:String(r[G.FIRST]||''),
              last:String(r[G.LAST]||''), email:String(r[G.EMAIL]||''),
              phone:String(r[G.PHONE]||''), attending:normAttend(r[G.ATTENDING]),
-             meal:String(r[G.MEAL]||''), diet:String(r[G.DIET]||''),
+             meal:String(r[G.MEAL]||''), scope:normScope(r[G.SCOPE]), diet:String(r[G.DIET]||''),
              updated: r[G.UPDATED] ? new Date(r[G.UPDATED]).toISOString() : '',
              id:String(r[G.GID]||''), notes:String(r[G.NOTES]||'') };
   }).filter(function(g){ return g.first || g.last || g.email || g.phone || g.id; });
@@ -821,6 +764,7 @@ function adminData(light){
              lastReply: r[P.LASTREPLY] ? new Date(r[P.LASTREPLY]).toISOString() : '',
              sent:      r[P.SENT]      ? new Date(r[P.SENT]).toISOString()      : '',
              reminded:  r[P.REMINDED]  ? new Date(r[P.REMINDED]).toISOString()  : '',
+             thanked:   r[P.THANKED]   ? new Date(r[P.THANKED]).toISOString()   : '',
              admin:String(r[P.ADMIN]||'') };
   }).filter(function(p){ return p.party; });
 
@@ -881,7 +825,7 @@ function writeGuest(g, knownParties){
     before = { party:pad(cur[G.PARTY]), first:String(cur[G.FIRST]||''), last:String(cur[G.LAST]||''),
                email:String(cur[G.EMAIL]||''), phone:String(cur[G.PHONE]||''),
                attending:normAttend(cur[G.ATTENDING]), meal:String(cur[G.MEAL]||''),
-               diet:String(cur[G.DIET]||'') };
+               scope:normScope(cur[G.SCOPE]), diet:String(cur[G.DIET]||'') };
     keepStamp = cur[G.UPDATED] || '';
     if(!g.id) g.id = String(cur[G.GID] || ('g-'+party+'-'+Utilities.getUuid().slice(0,6)));
   }
@@ -897,7 +841,7 @@ function writeGuest(g, knownParties){
   s.getRange(row,1,1,GUEST_COLS).setValues([[
     party, String(g.first||'').trim(), String(g.last||'').trim(),
     String(g.email||'').trim(), String(g.phone||'').trim(),
-    attending, String(g.meal||''), String(g.diet||''),
+    attending, String(g.meal||''), normScope(g.scope), String(g.diet||''),
     changedReply ? new Date() : keepStamp,
     g.id, String(g.notes||'')
   ]]);
@@ -909,6 +853,7 @@ function writeGuest(g, knownParties){
     if(before.attending !== normAttend(attending))
       logChange(party, name, 'Attending', before.attending || '(no reply)', normAttend(attending) || '(cleared)', 'admin');
     if(before.meal  !== String(g.meal||''))  logChange(party, name, 'Meal',  before.meal  || '(none)', String(g.meal||'')  || '(none)', 'admin');
+    if(before.scope !== normScope(g.scope))  logChange(party, name, 'Coming to', before.scope || '(none)', normScope(g.scope) || '(none)', 'admin');
     if(before.diet  !== String(g.diet||''))  logChange(party, name, 'Dietary notes', before.diet || '(none)', String(g.diet||'') || '(none)', 'admin');
     if(before.email !== String(g.email||'').trim()) logChange(party, name, 'Email', before.email || '(none)', String(g.email||'') || '(none)', 'admin');
     if(before.phone !== String(g.phone||'').trim()) logChange(party, name, 'Phone', before.phone || '(none)', String(g.phone||'') || '(none)', 'admin');
@@ -1209,7 +1154,14 @@ function partyForMail(row){
     row: row, partyId: id,
     label: String(pv[P.NAME] || ('Party '+id)),
     names: names,
-    link: String(pv[P.LINK] || (siteUrl() + '/?i=' + pv[P.TOKEN])),
+    /* Built from this party's own token. A stored link that has lost its token
+       (an old row, a stray paste) is ignored rather than sent to a guest. */
+    link: (function(){
+             var tok = String(pv[P.TOKEN]||'').trim();
+             var stored = String(pv[P.LINK]||'').trim();
+             if(tok && stored && stored.indexOf(tok) !== -1) return stored;
+             return tok ? siteUrl() + '/?i=' + tok : siteUrl();
+           })(),
     deadline: prettyDate(pv[P.DEADLINE]),
     emails: String(pv[P.EMAILS]||'').split(/[,;]/).map(function(x){return x.trim();}).filter(String)
   };
@@ -1226,16 +1178,34 @@ function fillTokens(text, party){
 function renderEmail(subject, body, party){
   var filled = fillTokens(body, party);
 
+  /* A [[Label]] line becomes a button pointing at this party's own link. It is
+     recognised on any line of its own, not only when a blank line happens to
+     sit either side of it, because that is easy to lose while editing. */
+  function button(label){
+    return '<p style="margin:30px 0;text-align:center">'+
+      '<a href="'+esc(party.link)+'" style="display:inline-block;background:#9B5F57;color:#ffffff;'+
+      'padding:15px 34px;text-decoration:none;letter-spacing:3px;font-size:11px;'+
+      'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">'+esc(label.trim())+'</a></p>';
+  }
+  function para(lines){
+    if(!lines.length) return '';
+    var text = esc(lines.join('\n').trim()).replace(/\n/g,'<br>');
+    /* a link left in the text as plain words is still worth clicking */
+    text = text.replace(/https?:\/\/[^\s<]+/g, function(u){
+      return '<a href="'+u+'" style="color:#9B5F57">'+u+'</a>';
+    });
+    return '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#3A2E2B">'+text+'</p>';
+  }
+
   var blocks = filled.split(/\n\s*\n/).map(function(chunk){
-    var btn = chunk.match(/^\s*\[\[(.+?)\]\]\s*$/);
-    if(btn){
-      return '<p style="margin:30px 0;text-align:center">'+
-        '<a href="'+esc(party.link)+'" style="display:inline-block;background:#9B5F57;color:#ffffff;'+
-        'padding:15px 34px;text-decoration:none;letter-spacing:3px;font-size:11px;'+
-        'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">'+esc(btn[1].trim())+'</a></p>';
-    }
-    return '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#3A2E2B">'+
-           esc(chunk.trim()).replace(/\n/g,'<br>')+'</p>';
+    var out = [], held = [];
+    chunk.split('\n').forEach(function(line){
+      var btn = line.match(/^\s*\[\[(.+?)\]\]\s*$/);
+      if(btn){ out.push(para(held)); held = []; out.push(button(btn[1])); }
+      else held.push(line);
+    });
+    out.push(para(held));
+    return out.join('');
   }).join('');
 
   return [
@@ -1303,6 +1273,11 @@ function adminSend(b){
       } else if(kind === 'reminder'){
         s.getRange(row, P.REMINDED+1).setValue(new Date());
         logChange(id, '', 'Reminder sent', '', party.emails.join(', '), 'admin');
+      } else if(kind === 'thanks' || kind === 'thanks-gift'){
+        s.getRange(row, P.THANKED+1).setValue(new Date());
+        logChange(id, '', 'Thank you email sent',
+                  kind === 'thanks-gift' ? '' : '',
+                  kind === 'thanks-gift' ? 'with gift' : 'no gift', 'admin');
       } else {
         logChange(id, '', 'Email sent', String(b.subject).slice(0,80), party.emails.join(', '), 'admin');
       }
@@ -1328,27 +1303,33 @@ function setup(){
 
   /* ---------- Guests ---------- */
   var g = s.getSheetByName(SH.GUESTS) || s.insertSheet(SH.GUESTS, 0);
+  /* Coming To arrived after the first guests did, so make room for it without
+     disturbing what is already in the sheet. */
+  insertColumnFor(g, 'Coming To', 'Meal');
   var gHead = ['Party','First Name','Last Name','Email','Phone','Attending','Meal',
-               'Dietary Notes','Updated','Guest ID','Admin Notes'];
+               'Coming To','Dietary Notes','Updated','Guest ID','Admin Notes'];
   if(g.getMaxColumns() < GUEST_COLS) g.insertColumnsAfter(g.getMaxColumns(), GUEST_COLS - g.getMaxColumns());
   g.getRange(1,1,1,GUEST_COLS).setValues([gHead]);
   g.getRange('A2:A').setNumberFormat('@');
   styleHeader(g, GUEST_COLS);
-  [70,120,120,220,150,90,150,200,150,150,200].forEach(function(w,i){ g.setColumnWidth(i+1, w); });
+  [70,120,120,220,150,90,150,230,200,150,150,200].forEach(function(w,i){ g.setColumnWidth(i+1, w); });
   g.setFrozenRows(1);
   g.getRange('F2:F2000').setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(['Yes','No'], true).setAllowInvalid(true).build());
+  g.getRange(2, G.SCOPE+1, 1999, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(SCOPES, true).setAllowInvalid(true).build());
 
   /* ---------- Parties, with migration from the older column order ---------- */
   var p = s.getSheetByName(SH.PARTIES) || s.insertSheet(SH.PARTIES, 1);
+  insertColumnFor(p, 'Thank You Sent', 'Reminder Sent');
   var pHead = ['Party','Party Name','RSVP Open','Link Code','Invite Link','Wave','RSVP Deadline',
                'Invited','Replied','Attending','Email(s)','Note From Guests','Last Reply',
-               'Invite Sent','Reminder Sent','Admin Notes'];
+               'Invite Sent','Reminder Sent','Thank You Sent','Admin Notes'];
   var oldHead = p.getLastColumn() >= 6 ? String(p.getRange(1,6).getValue()).trim() : '';
   if(oldHead === 'Invited'){
     var old = p.getLastRow() > 1 ? p.getRange(2,1,p.getLastRow()-1,12).getValues() : [];
     var moved = old.filter(function(r){ return String(r[0]).trim(); }).map(function(r){
-      return [r[0], r[1], r[2], r[3], r[4], 1, '', '', '', '', r[8], r[9], r[10], r[11], '', ''];
+      return [r[0], r[1], r[2], r[3], r[4], 1, '', '', '', '', r[8], r[9], r[10], r[11], '', '', ''];
     });
     p.clear();
     if(p.getMaxColumns() < PARTY_COLS) p.insertColumnsAfter(p.getMaxColumns(), PARTY_COLS - p.getMaxColumns());
@@ -1464,6 +1445,13 @@ function setup(){
     ]);
   }
   t.getRange(1,1,1,3).setValues([['Key','Subject','Body']]);
+  /* added after the first three, so they are seeded by key rather than by
+     rewriting the tab and losing anything Eric has edited */
+  seedTemplates([
+    ['thanks-gift', 'Thank you, from both of us',
+     "Dear {{names}},\n\nThank you so much for celebrating with us, and thank you for your very generous gift. It was so good to have you there, and we are still smiling about it.\n\nWith love,\nNatalie & Eric"],
+    ['blank', '', '']
+  ]);
   styleHeader(t, 3);
   [120,340,760].forEach(function(w,i){ t.setColumnWidth(i+1, w); });
   t.setFrozenRows(1);
@@ -1474,6 +1462,30 @@ function setup(){
 
   refreshPartyMetrics();
   s.toast('Setup complete. Deploy a new version, then open /admin.','Ready',8);
+}
+
+/* Adds a column that a later version of the site needs, in the right place,
+   leaving every existing value where it was. Does nothing if it is already
+   there, so setup() stays safe to run again. */
+function insertColumnFor(sh, header, after){
+  var last = sh.getLastColumn();
+  if(last < 1) return false;
+  var hdr = sh.getRange(1,1,1,last).getValues()[0].map(function(x){ return String(x).trim(); });
+  if(hdr.indexOf(header) !== -1) return false;
+  var at = hdr.indexOf(after);
+  if(at === -1) return false;
+  sh.insertColumnAfter(at + 1);
+  sh.getRange(1, at + 2).setValue(header);
+  return true;
+}
+
+function seedTemplates(list){
+  var t = sheet(SH.TEMPLATES);
+  var have = {};
+  rows(SH.TEMPLATES).forEach(function(r){ have[String(r[0]).trim().toLowerCase()] = true; });
+  list.forEach(function(row){
+    if(!have[row[0].toLowerCase()]) t.appendRow(row);
+  });
 }
 
 function seedConfig(list){

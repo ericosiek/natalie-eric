@@ -214,15 +214,13 @@
       <p class="eyebrow" data-date="long">Sunday, July 11, 2027</p>
       <h2>Schedule</h2>
       <div class="rule"><i></i></div>
-      <p class="lede">How the day unfolds. Subscribe and the whole day lands in your
-        calendar &mdash; and stays right, even if something about it shifts between now and then.</p>
+      <p class="lede">How the day unfolds. Add any part of it to your calendar so nothing sneaks up on you.</p>
     </div>
 
     <div class="timeline" id="timeline"></div>
 
     <p class="center rev" style="margin-top:2.4rem">
-      <button class="btn" id="subAll" hidden>Subscribe to the schedule</button>
-      <button class="btn ghost" id="addAll">Add it once, as it stands</button>
+      <button class="btn ghost" id="addAll">Add the full schedule to my calendar</button>
     </p>
 
     <figure class="photo portrait rev">
@@ -323,6 +321,9 @@ const CONFIG = {
 
   // Fallbacks; the live values come from the Config tab of the RSVP sheet.
   meals:      ["Steak & Lobster", "Fish", "Vegetarian"],
+  scopes:     ["Wedding Ceremony & Reception",
+               "Reception Only (dinner/dancing)",
+               "Wedding Ceremony Only"],
   deadline:   "",                             // e.g. "2027-04-15"; blank = "at your earliest convenience"
   countdownTo:"15:30",                        // what the countdown counts to; blank = the day's first event
   rev:        0,                              // the schedule's revision, sent by the sheet
@@ -405,19 +406,39 @@ function deadlineSentence(){
 }
 
 /* ---------- calendar ---------- */
-/* The live feed, which a calendar can subscribe to and re-read on its own,
-   so a change to the schedule reaches everyone who saved it. */
-function feedUrl(one){
-  if(!CONFIG.apiUrl) return "";
-  return CONFIG.apiUrl + "?action=ics" + (one ? "&e="+encodeURIComponent(one) : "");
-}
 function icsUid(ev){ return (ev.uid || ev.key) + "-natalie-eric@natalie-eric.website"; }
+
+/* A comma, a semicolon or a backslash inside a value has to be escaped, or a
+   strict calendar reads the rest of the line as a second value and either
+   mangles the entry or refuses the file. Our address has three commas in it,
+   which is exactly the case that used to break. */
+function icsText(v){
+  return String(v==null?"":v)
+    .replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,")
+    .replace(/\r?\n/g,"\\n");
+}
+/* and no line may run past 75 characters; a continuation starts with a space.
+   The cut never lands between a backslash and the character it escapes, which
+   would leave half an escape sequence at the end of a line. */
+function icsCut(s, n){
+  let k = Math.min(n, s.length), b = 0;
+  while(b < k && s[k-1-b] === "\\") b++;
+  return (b % 2) ? k - 1 : k;
+}
+function icsFold(line){
+  if(line.length <= 74) return line;
+  let k = icsCut(line, 74), out = line.slice(0,k), rest = line.slice(k);
+  while(rest.length > 73){ const c = icsCut(rest, 73); out += "\r\n " + rest.slice(0,c); rest = rest.slice(c); }
+  return out + "\r\n " + rest;
+}
 
 function icsFor(events){
   const stamp = CONFIG.updated || icsStamp(new Date());
-  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Natalie and Eric//Wedding//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  const lines = ["BEGIN:VCALENDAR","VERSION:2.0",
+                 "PRODID:-//Natalie and Eric//Wedding//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
   events.forEach(ev=>{
-    const desc = [ev.note, ev.tags.join(" · ")].filter(Boolean).join("\\n");
+    const desc  = [ev.note, ev.tags.join(" · ")].filter(Boolean).join("\n");
+    const where = [(ev.place||CONFIG.venue), CONFIG.address].filter(Boolean).join(", ");
     /* The id and the revision are how a calendar recognises an entry it is
        already holding: saving again after a change updates that entry in
        place, rather than leaving a stale copy beside the new one. */
@@ -428,15 +449,16 @@ function icsFor(events){
       "LAST-MODIFIED:"+stamp,
       "DTSTART:"+icsStamp(evDate(ev.start)),
       "DTEND:"+icsStamp(evEnd(ev)),
-      "SUMMARY:Natalie & Eric: "+ev.title,
-      "LOCATION:"+(ev.place||CONFIG.venue)+", "+CONFIG.address,
-      "DESCRIPTION:"+desc,
+      "SUMMARY:"+icsText("Natalie & Eric: "+ev.title),
+      "LOCATION:"+icsText(where),
+      "DESCRIPTION:"+icsText(desc),
       "URL:https://natalie-eric.website/#schedule",
       "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
       "END:VEVENT");
   });
   lines.push("END:VCALENDAR");
-  return lines.join("\r\n");
+  return lines.map(icsFold).join("\r\n") + "\r\n";
 }
 function downloadIcs(events, filename){
   const blob = new Blob([icsFor(events)],{type:"text/calendar;charset=utf-8"});
@@ -468,35 +490,32 @@ function outlookUrl(ev){
   return "https://outlook.live.com/calendar/0/deeplink/compose?"+p.toString();
 }
 
-/* Subscribing hands the calendar the address of the feed rather than a copy
-   of today's times, so the entries follow every later change on their own.
-   webcal: is what Apple Calendar and Outlook answer to; Google needs its own
-   "add by URL" page, so phones and desktops both land somewhere sensible. */
-function subscribe(url){
-  if(!url) return;
-  const web = url.replace(/^https?:/,"webcal:");
-  const goog = /android/i.test(navigator.userAgent);
-  window.location.href = goog
-    ? "https://calendar.google.com/calendar/u/0/r/settings/addbyurl?cid="+encodeURIComponent(url)
-    : web;
-}
-
 let openMenu = null;
 function closeCalMenu(){ if(openMenu){ openMenu.remove(); openMenu=null; } }
 document.addEventListener("click", e=>{ if(openMenu && !openMenu.contains(e.target)) closeCalMenu(); });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeCalMenu(); });
 
+/* Which single event a "whole schedule" web-calendar link should carry.
+   Google and Outlook.com each take one event at a time, so rather than firing
+   off a stack of tabs it adds the ceremony, which is the one everybody wants. */
+function headlineEvent(events){
+  return events.find(e => /ceremony/i.test(e.title) && !/tea/i.test(e.title))
+      || events[1] || events[0];
+}
+
 function calMenu(anchor, events, label, opts){
   closeCalMenu();
   opts = opts || {};
-  const feed = feedUrl(opts.all ? "" : (events.length===1 ? events[0].uid : ""));
+  const one = events.length === 1 ? events[0] : headlineEvent(events);
   const m = document.createElement("div");
   m.className = "cal-menu";
   m.innerHTML =
-    (feed ? '<button data-a="sub"><b>Subscribe</b><i>keeps itself up to date</i></button><div class="cal-sep"></div>' : "")+
-    '<button data-a="apple">Apple / Outlook app</button>'+
-    (events.length===1 ? '<button data-a="google">Google Calendar</button><button data-a="outlook">Outlook.com</button>'
-                       : '<button data-a="google">Google Calendar (one at a time)</button>');
+    '<button data-a="apple"><b>Apple Calendar</b><i>'+
+      (events.length===1 ? "and the Outlook app" : "the whole day, in one file")+'</i></button>'+
+    '<button data-a="google"><b>Google Calendar</b><i>'+
+      (events.length===1 ? "opens ready to save" : esc(one.title))+'</i></button>'+
+    '<button data-a="outlook"><b>Outlook.com</b><i>'+
+      (events.length===1 ? "opens ready to save" : esc(one.title))+'</i></button>';
   document.body.appendChild(m);
   const r = anchor.getBoundingClientRect();
   const w = m.offsetWidth, h = m.offsetHeight;
@@ -505,10 +524,9 @@ function calMenu(anchor, events, label, opts){
   m.addEventListener("click", e=>{
     const b = e.target.closest("button"); if(!b) return;
     const a = b.dataset.a;
-    if(a==="sub")     subscribe(feed);
     if(a==="apple")   downloadIcs(events, label+".ics");
-    if(a==="google")  events.forEach((ev,i)=> setTimeout(()=> window.open(googleUrl(ev),"_blank","noopener"), i*400));
-    if(a==="outlook") window.open(outlookUrl(events[0]),"_blank","noopener");
+    if(a==="google")  window.open(googleUrl(one),"_blank","noopener");
+    if(a==="outlook") window.open(outlookUrl(one),"_blank","noopener");
     closeCalMenu();
   });
   openMenu = m;
@@ -549,11 +567,6 @@ function renderSchedule(){
     e.stopPropagation();
     calMenu($("#addAll"), SCHEDULE, "natalie-eric-wedding", {all:true});
   };
-  const sub = $("#subAll");
-  if(sub){
-    sub.hidden = !feedUrl("");
-    sub.onclick = e=>{ e.stopPropagation(); subscribe(feedUrl("")); };
-  }
 }
 
 function renderFaq(){
@@ -842,20 +855,21 @@ const RSVP = {
   renderForm(){
     const p = this.party, locked = !p.open;
 
-    /* ---- locked: read-only ---- */
+    /* ---- closed: everything they told us, just not editable ---- */
     if(locked){
       this.panel.innerHTML =
         '<div class="notice locked"><strong>RSVPs for your party are now closed.</strong><br>'+
         (p.responded
-          ? 'Here’s what we have on file. If something needs to change, email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a> and we’ll take care of it.'
+          ? 'Here’s everything we have for your party. If something needs to change, email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a> and we’ll take care of it.'
           : 'We didn’t receive a reply from your party. If you’d still like to come, email us at <a href="mailto:'+CONFIG.email+'">'+CONFIG.email+'</a> and we’ll do our best.')+
-        '</div>'+ (p.responded ? this.summaryHtml() : "") + this.notYouHtml();
+        '</div>'+ this.summaryHtml() + this.notYouHtml();
       this.wireNotYou();
       return;
     }
 
     /* ---- open: editable ---- */
-    const mealOpts = CONFIG.meals.map(m=>'<option value="'+esc(m)+'">'+esc(m)+'</option>').join("");
+    const mealOpts  = CONFIG.meals.map(m=>'<option value="'+esc(m)+'">'+esc(m)+'</option>').join("");
+    const scopeOpts = CONFIG.scopes.map(m=>'<option value="'+esc(m)+'">'+esc(m)+'</option>').join("");
     this.panel.innerHTML =
       (p.responded
         ? '<div class="notice ok"><strong>You’ve already replied, thank you.</strong></div>'
@@ -873,6 +887,12 @@ const RSVP = {
               <label for="n${i}">Regretfully Declines</label>
             </div>
             <div class="meal-block" data-meal="${i}" ${g.attending==="yes"?"":"hidden"}>
+              <div class="field" style="margin-bottom:.9rem">
+                <label class="lab" for="s${i}">Which parts are you joining?</label>
+                <select id="s${i}">
+                  <option value="">Please select&hellip;</option>${scopeOpts}
+                </select>
+              </div>
               <div class="field" style="margin-bottom:.9rem">
                 <label class="lab" for="m${i}">Meal choice</label>
                 <select id="m${i}">
@@ -895,8 +915,12 @@ const RSVP = {
       (CONFIG.apiUrl ? "" : '<p style="margin-top:1.2rem;font-size:.9rem;color:var(--ink-faint);text-align:center">Preview mode. Responses are not being saved yet.</p>')+
       this.notYouHtml();
 
-    /* prefill meals (value set after options exist) */
-    p.guests.forEach((g,i)=>{ if(g.meal) { const s=$("#m"+i); if(s) s.value=g.meal; } });
+    /* prefill the two dropdowns (values set after their options exist) */
+    p.guests.forEach((g,i)=>{
+      if(g.meal){  const s=$("#m"+i); if(s) s.value = g.meal; }
+      const sc = $("#s"+i);
+      if(sc) sc.value = g.scope || (g.attending === "yes" ? CONFIG.scopes[0] : "");
+    });
 
     /* show/hide meal block */
     $$("#rsvpForm .choice input").forEach(inp=>{
@@ -913,13 +937,27 @@ const RSVP = {
     this.wireNotYou();
   },
 
+  /* What the party told us, in full: who is coming, which parts they are
+     joining, what they are eating and anything they asked us to know. */
   summaryHtml(){
-    return '<div class="summary">'+ this.party.guests.map(g=>
-      '<div class="sum-row"><span class="who">'+esc(g.name)+'</span>'+
-      '<span class="what '+(g.attending==="yes"?"yes":"")+'">'+
-      (g.attending==="yes" ? "Attending"+(g.meal?" &middot; "+esc(g.meal):"")
-       : g.attending==="no" ? "Not attending" : "No reply")+
-      '</span></div>').join("")+'</div>';
+    const p = this.party;
+    const rows = p.guests.map(g=>{
+      const bits = [];
+      if(g.attending === "yes"){
+        if(g.scope) bits.push(esc(g.scope));
+        if(g.meal)  bits.push(esc(g.meal));
+        if(g.diet)  bits.push(esc(g.diet));
+      }
+      return '<div class="sum-row"><span class="who">'+esc(g.name)+'</span>'+
+        '<span class="what '+(g.attending==="yes"?"yes":"")+'">'+
+        (g.attending==="yes" ? "Attending" : g.attending==="no" ? "Not attending" : "No reply")+
+        (bits.length ? '<span class="sum-more">'+bits.join(" &middot; ")+'</span>' : "")+
+        '</span></div>';
+    }).join("");
+    const note = p.note
+      ? '<div class="sum-row note"><span class="who">Your note</span><span class="what"><span class="sum-more">'+esc(p.note)+'</span></span></div>'
+      : "";
+    return '<div class="summary">'+rows+note+'</div>';
   },
 
   async submit(){
@@ -930,9 +968,12 @@ const RSVP = {
       const sel = document.querySelector('input[name="a'+i+'"]:checked');
       if(!sel){ missing.push(g.name+": please choose accept or decline"); return; }
       const attending = sel.value;
-      const meal = attending==="yes" ? ($("#m"+i)||{}).value || "" : "";
+      const meal  = attending==="yes" ? ($("#m"+i)||{}).value || "" : "";
+      const scope = attending==="yes" ? ($("#s"+i)||{}).value || "" : "";
+      if(attending==="yes" && !scope){ missing.push(g.name+": please choose which parts you're joining"); return; }
       if(attending==="yes" && !meal){ missing.push(g.name+": please choose a meal"); return; }
-      guests.push({ id:g.id, attending, meal, diet: attending==="yes" ? (($("#d"+i)||{}).value||"").trim() : "" });
+      guests.push({ id:g.id, attending, meal, scope,
+                    diet: attending==="yes" ? (($("#d"+i)||{}).value||"").trim() : "" });
     });
 
     const err = $("#formErr");
