@@ -244,14 +244,28 @@ function mailOptions(){
   if(alias) o.from = alias;
   return o;
 }
-function logChange(party, guest, field, from, to, by){
+/* The log is written in one go at the end of a request. Writing a row per
+   field change was a sheet round trip each time, which is what made saving
+   a whole party card take the best part of half a minute. */
+var _logBuf = null;
+function beginBatch(){ _logBuf = []; }
+function endBatch(){
+  var buf = _logBuf; _logBuf = null;
+  if(!buf || !buf.length) return;
   try{
     var s = sheet(SH.LOG), row = s.getLastRow() + 1;
-    /* columns 2-7 as text, so a value like +55 11 9... is not read as a formula */
+    s.getRange(row, 2, buf.length, 6).setNumberFormat('@');
+    s.getRange(row, 1, buf.length, 7).setValues(buf);
+  }catch(e){}
+}
+function logChange(party, guest, field, from, to, by){
+  var line = [new Date(), pad(party), String(guest||''), String(field||''),
+              String(from||''), String(to||''), by || 'guest'];
+  if(_logBuf){ _logBuf.push(line); return; }
+  try{
+    var s = sheet(SH.LOG), row = s.getLastRow() + 1;
     s.getRange(row, 2, 1, 6).setNumberFormat('@');
-    s.getRange(row, 1, 1, 7).setValues([[new Date(), pad(party), String(guest||''),
-                                         String(field||''), String(from||''),
-                                         String(to||''), by || 'guest']]);
+    s.getRange(row, 1, 1, 7).setValues([line]);
   }catch(e){}
 }
 
@@ -604,7 +618,7 @@ function adminData(light){
              meal:String(r[G.MEAL]||''), diet:String(r[G.DIET]||''),
              updated: r[G.UPDATED] ? new Date(r[G.UPDATED]).toISOString() : '',
              id:String(r[G.GID]||''), notes:String(r[G.NOTES]||'') };
-  }).filter(function(g){ return g.first || g.last; });
+  }).filter(function(g){ return g.first || g.last || g.email || g.phone || g.id; });
 
   var parties = rows(SH.PARTIES).map(function(r, i){
     return { row:i+2, party:pad(r[P.PARTY]), name:String(r[P.NAME]||''),
@@ -651,21 +665,24 @@ function adminData(light){
    ADMIN: guests
    ========================================================================== */
 
-function adminSaveGuest(b){
-  var g = b.guest || {}, s = sheet(SH.GUESTS);
+/* writeGuest does the sheet work and nothing else: no metrics, no reading
+   the whole dataset back. The callers decide when to do those, once. */
+function writeGuest(g, knownParties){
+  var s = sheet(SH.GUESTS);
   var party = pad(g.party);
   if(!party) return {ok:false, error:'Every guest needs a party number.'};
-  if(!String(g.first||'').trim() && !String(g.last||'').trim())
-    return {ok:false, error:'Every guest needs a name.'};
 
-  ensureParty(party);
+  if(!knownParties || !knownParties[party]){
+    ensureParty(party);
+    if(knownParties) knownParties[party] = true;
+  }
 
   var row = Number(g.row || 0);
   var isNew = !row;
-  var before = null;
+  var before = null, keepStamp = '';
 
   if(isNew){
-    row = firstFreeRow(s, 1);
+    row = firstFreeGuestRow(s);
     if(!g.id) g.id = 'g-' + party + '-' + Utilities.getUuid().slice(0,6);
   } else {
     var cur = s.getRange(row,1,1,GUEST_COLS).getValues()[0];
@@ -673,11 +690,13 @@ function adminSaveGuest(b){
                email:String(cur[G.EMAIL]||''), phone:String(cur[G.PHONE]||''),
                attending:normAttend(cur[G.ATTENDING]), meal:String(cur[G.MEAL]||''),
                diet:String(cur[G.DIET]||'') };
+    keepStamp = cur[G.UPDATED] || '';
     if(!g.id) g.id = String(cur[G.GID] || ('g-'+party+'-'+Utilities.getUuid().slice(0,6)));
   }
 
   var name = (String(g.first||'').trim()+' '+String(g.last||'').trim()).trim();
   var attending = g.attending === 'yes' ? 'Yes' : g.attending === 'no' ? 'No' : '';
+  var changedReply = isNew || (before && before.attending !== normAttend(attending));
 
   /* text format everywhere but the timestamp, so a phone like +55 11 9... */
   /* is stored as text instead of being read as a formula                  */
@@ -687,12 +706,12 @@ function adminSaveGuest(b){
     party, String(g.first||'').trim(), String(g.last||'').trim(),
     String(g.email||'').trim(), String(g.phone||'').trim(),
     attending, String(g.meal||''), String(g.diet||''),
-    (before && before.attending !== normAttend(attending)) || isNew ? new Date() : (s.getRange(row, G.UPDATED+1).getValue() || ''),
+    changedReply ? new Date() : keepStamp,
     g.id, String(g.notes||'')
   ]]);
 
   if(isNew){
-    logChange(party, name, 'Guest added', '', name, 'admin');
+    logChange(party, name || '(unnamed)', 'Guest added', '', name || '(blank row)', 'admin');
   } else {
     if(before.party !== party)             logChange(party, name, 'Moved party', before.party, party, 'admin');
     if(before.attending !== normAttend(attending))
@@ -702,22 +721,52 @@ function adminSaveGuest(b){
     if(before.email !== String(g.email||'').trim()) logChange(party, name, 'Email', before.email || '(none)', String(g.email||'') || '(none)', 'admin');
     if(before.phone !== String(g.phone||'').trim()) logChange(party, name, 'Phone', before.phone || '(none)', String(g.phone||'') || '(none)', 'admin');
     var oldName = (before.first+' '+before.last).trim();
-    if(oldName !== name) logChange(party, name, 'Name', oldName, name, 'admin');
+    if(oldName !== name) logChange(party, name, 'Name', oldName || '(blank)', name || '(blank)', 'admin');
   }
+  return {ok:true, row:row, id:g.id};
+}
 
+function adminSaveGuest(b){
+  beginBatch();
+  var r = writeGuest(b.guest || {});
+  if(!r.ok){ endBatch(); return r; }
   refreshPartyMetrics();
-  return {ok:true, data:adminData(b.light)};
+  endBatch();
+  return {ok:true, row:r.row, id:r.id, data:adminData(b.light)};
+}
+
+function removeGuestRow(row){
+  var s = sheet(SH.GUESTS);
+  if(!row) return;
+  var cur = s.getRange(row,1,1,GUEST_COLS).getValues()[0];
+  var name = (String(cur[G.FIRST]||'')+' '+String(cur[G.LAST]||'')).trim();
+  logChange(pad(cur[G.PARTY]), name, 'Guest removed', name || '(blank row)', '', 'admin');
+  s.deleteRow(row);
 }
 
 function adminDeleteGuest(b){
-  var s = sheet(SH.GUESTS), row = Number(b.row||0);
+  var row = Number(b.row||0);
   if(!row) return {ok:false, error:'No row given.'};
-  var cur = s.getRange(row,1,1,GUEST_COLS).getValues()[0];
-  var name = (String(cur[G.FIRST]||'')+' '+String(cur[G.LAST]||'')).trim();
-  logChange(pad(cur[G.PARTY]), name, 'Guest removed', name, '', 'admin');
-  s.deleteRow(row);
+  beginBatch();
+  removeGuestRow(row);
   refreshPartyMetrics();
+  endBatch();
   return {ok:true, data:adminData(b.light)};
+}
+
+/* A row only counts as free when the whole record is empty, so a row typed
+   straight into the sheet can never be written over. */
+function firstFreeGuestRow(s){
+  var n = Math.max(s.getMaxRows() - 1, 1);
+  var v = s.getRange(2, 1, n, GUEST_COLS).getValues();
+  for(var i=0;i<v.length;i++){
+    var r = v[i];
+    var empty = !String(r[G.PARTY]||'').trim() && !String(r[G.FIRST]||'').trim() &&
+                !String(r[G.LAST]||'').trim()  && !String(r[G.EMAIL]||'').trim() &&
+                !String(r[G.PHONE]||'').trim() && !String(r[G.GID]||'').trim();
+    if(empty) return i+2;
+  }
+  return n + 2;
 }
 
 function firstFreeRow(s, col){
@@ -756,8 +805,7 @@ function partyRowById(party){
   return 0;
 }
 
-function adminSaveParty(b){
-  var p = b.party || {};
+function writeParty(p){
   var id = pad(p.party);
   if(!id) return {ok:false, error:'A party needs a number.'};
   var row = partyRowById(id) || ensureParty(id);
@@ -768,6 +816,8 @@ function adminSaveParty(b){
     logChange(id, '', 'RSVP open', isTrue(cur[P.OPEN]) ? 'yes' : 'no', p.open ? 'yes' : 'no', 'admin');
   if(ymd(cur[P.DEADLINE]) !== ymd(p.deadline))
     logChange(id, '', 'RSVP deadline', ymd(cur[P.DEADLINE]) || '(none)', ymd(p.deadline) || '(none)', 'admin');
+  if(String(cur[P.NAME]||'') !== String(p.name||''))
+    logChange(id, '', 'Party name', String(cur[P.NAME]||'') || '(none)', String(p.name||'') || '(none)', 'admin');
 
   s.getRange(row, P.NAME+1).setNumberFormat('@').setValue(String(p.name||('Party '+id)));
   s.getRange(row, P.OPEN+1).insertCheckboxes();
@@ -778,10 +828,18 @@ function adminSaveParty(b){
   s.getRange(row, P.ADMIN+1).setNumberFormat('@').setValue(String(p.admin||''));
   if(!cur[P.TOKEN]){
     var t = newToken();
-    s.getRange(row, P.TOKEN+1).setValue(t);
-    s.getRange(row, P.LINK+1).setValue(siteUrl() + '/?i=' + t);
+    s.getRange(row, P.TOKEN+1).setNumberFormat('@').setValue(t);
+    s.getRange(row, P.LINK+1).setNumberFormat('@').setValue(siteUrl() + '/?i=' + t);
   }
+  return {ok:true, row:row};
+}
+
+function adminSaveParty(b){
+  beginBatch();
+  var r = writeParty(b.party || {});
+  if(!r.ok){ endBatch(); return r; }
   refreshPartyMetrics();
+  endBatch();
   return {ok:true, data:adminData(b.light)};
 }
 
@@ -793,13 +851,19 @@ function adminSaveParty(b){
    the lot in one request.
    ========================================================================== */
 function adminSavePartyBundle(b){
-  var out = {ok:true};
-  if(b.party) adminSaveParty({party:b.party, light:true});
-  (b.guests || []).forEach(function(g){ adminSaveGuest({guest:g, light:true}); });
-  (b.remove || []).forEach(function(row){ adminDeleteGuest({row:row, light:true}); });
-  refreshPartyMetrics();
-  out.data = adminData(true);
-  return out;
+  beginBatch();
+  var known = {};
+  try{
+    if(b.party){
+      var pr = writeParty(b.party);
+      if(!pr.ok){ endBatch(); return pr; }
+      known[pad(b.party.party)] = true;
+    }
+    (b.guests || []).forEach(function(g){ writeGuest(g, known); });
+    (b.remove || []).forEach(function(row){ removeGuestRow(Number(row)); });
+    refreshPartyMetrics();
+  } finally { endBatch(); }
+  return {ok:true, data:adminData(b.light === false ? false : true)};
 }
 
 function adminDeleteParty(b){
@@ -814,18 +878,23 @@ function adminDeleteParty(b){
 }
 
 /* Rebuilds the live count formulas on every party row. */
+/* One read and one write for the whole column block, rather than four
+   range calls per party. */
 function refreshPartyMetrics(){
   var p = sheet(SH.PARTIES), n = p.getLastRow() - 1;
   if(n < 1) return;
-  for(var r = 2; r <= n + 1; r++){
-    if(!String(p.getRange(r, P.PARTY+1).getValue()).trim()) continue;
-    p.getRange(r, P.INVITED+1)
-      .setFormula('=COUNTIF(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"))');
-    p.getRange(r, P.REPLIED+1)
-      .setFormula('=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"<>")');
-    p.getRange(r, P.ATTENDING+1)
-      .setFormula('=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"Yes")');
+  var ids = p.getRange(2, P.PARTY+1, n, 1).getValues();
+  var out = [];
+  for(var i=0;i<n;i++){
+    var r = i + 2;
+    if(!String(ids[i][0]).trim()){ out.push(['','','']); continue; }
+    out.push([
+      '=COUNTIF(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"))',
+      '=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"<>")',
+      '=COUNTIFS(' + SH.GUESTS + '!$A:$A,TEXT($A' + r + ',"0000"),' + SH.GUESTS + '!$F:$F,"Yes")'
+    ]);
   }
+  p.getRange(2, P.INVITED+1, n, 3).setFormulas(out);
 }
 
 /* ==========================================================================
