@@ -21,6 +21,7 @@
      INVITATION  (first thing a guest sees when the link opens)
      ========================================================== -->
 <div id="invitation" role="dialog" aria-modal="true" aria-label="Wedding invitation">
+ <div class="env-stage">
   <div class="card-invite">
     <div class="seal">
       <span class="mono" aria-hidden="true">
@@ -42,6 +43,19 @@
     </p>
     <p style="margin-top:2.1rem"><button class="btn" id="openInvite">Open Invitation</button></p>
   </div>
+
+  <!-- The envelope only appears for the opening animation. The body sits
+       behind the card; the flap and the wax seal sit in front of it. -->
+  <div class="env-body" aria-hidden="true"></div>
+  <div class="env-flap" aria-hidden="true"></div>
+  <div class="env-seal" aria-hidden="true">
+      <svg width="42" height="24" viewBox="0 0 120 64" aria-hidden="true">
+        <text x="60" y="46" text-anchor="middle" font-family="Cormorant Garamond,Georgia,serif"
+              font-size="42" font-weight="300" fill="#7E3F38" letter-spacing="1">N<tspan
+              font-size="30" font-style="italic" fill="#9B5F57" dx="3">&amp;</tspan><tspan dx="3">E</tspan></text>
+    </svg>
+  </div>
+ </div>
 </div>
 
 <!-- ==========================================================
@@ -89,7 +103,6 @@
     <figure class="photo wide rev">
       <img src="/images/proposal.jpg" width="1500" height="998" loading="lazy" decoding="async"
            alt="Eric on one knee proposing to Natalie on a rock above the river at Ninh Binh, Vietnam">
-      <figcaption>Where it all started &middot; Ninh Binh, Vietnam</figcaption>
     </figure>
   </div>
 </section>
@@ -895,7 +908,7 @@ function closeInvitation(){
     ov.removeEventListener("animationend", onEnd);
     done();
   });
-  setTimeout(done, 1700);   /* belt and braces if the animation never fires */
+  setTimeout(done, 3000);   /* belt and braces if the animation never fires */
 }
 
 function showInvitation(){
