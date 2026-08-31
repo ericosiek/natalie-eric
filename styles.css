@@ -283,7 +283,7 @@ label.lab{
   display:block;font-family:var(--sans);font-size:.62rem;letter-spacing:.24em;
   text-transform:uppercase;color:var(--ink-soft);margin-bottom:.6rem;
 }
-input[type=text],input[type=email],select,textarea{
+input[type=text],input[type=email],input[type=password],input[type=tel],input[type=date],input[type=number],select,textarea{
   width:100%;font-family:var(--serif);font-size:1.02rem;color:var(--ink);
   background:var(--ground);border:1px solid var(--line);padding:.9rem 1rem;
   border-radius:2px;transition:border-color .3s,background .3s;-webkit-appearance:none;appearance:none;
