@@ -302,7 +302,7 @@ function siteContent(){
     date:     weddingDate(),
     dateLong: prettyDateFull(weddingDate()),
     tz:       weddingTz(),
-    countdownTo: String(cfg('Countdown To','')).trim(),
+    countdownTo: hhmm(cfg('Countdown To','15:30')) || '15:30',
     venue:    String(cfg('Venue','Riverway Clubhouse')),
     address:  String(cfg('Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3')),
     email:    sendAsAddress()
@@ -318,6 +318,20 @@ function siteContent(){
    ========================================================================== */
 
 function weddingDate(){ return ymd(cfg('Wedding Date','2027-07-11')) || '2027-07-11'; }
+
+/* A clock time, however the sheet chose to store it. Typing 15:30 into a cell
+   can leave Sheets holding a time value rather than the text, and both have to
+   come back as "15:30" or the calendars would be built from nonsense. */
+function hhmm(v){
+  if(v instanceof Date) return Utilities.formatDate(v, ss().getSpreadsheetTimeZone(), 'HH:mm');
+  var t = String(v == null ? '' : v).trim();
+  var m = t.match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return '';
+  var h = Number(m[1]);
+  if(/pm$/i.test(t) && h < 12) h += 12;
+  if(/am$/i.test(t) && h === 12) h = 0;
+  return (h < 10 ? '0' : '') + h + ':' + m[2];
+}
 function weddingTz(){ return String(cfg('Time Zone','-07:00')).trim() || '-07:00'; }
 
 /* "Sunday, July 11, 2027" */
@@ -350,7 +364,7 @@ function scheduleItems(){
       if(seen[id] > 1) id += '-' + seen[id];
       return {
         uid:   id,
-        start: String(r[1]).trim(), end: String(r[2]).trim(),
+        start: hhmm(r[1]), end: hhmm(r[2]),
         title: String(r[3]).trim(), place: String(r[4]).trim(),
         note:  String(r[5]).trim(),
         tags:  String(r[6]||'').split(',').map(function(x){ return x.trim(); }).filter(String)
@@ -817,7 +831,7 @@ function adminData(light){
     parties:  parties,
     log:      log,      /* null when light; the Change log tab asks for it */
     schedule: rows(SH.SCHEDULE).map(function(r,i){
-                return { row:i+2, order:r[0], start:String(r[1]||''), end:String(r[2]||''),
+                return { row:i+2, order:r[0], start:hhmm(r[1]), end:hhmm(r[2]),
                          title:String(r[3]||''), place:String(r[4]||''),
                          note:String(r[5]||''), tags:String(r[6]||''), visible:isTrue(r[7]) };
               }).filter(function(x){ return x.title; }),
@@ -1082,8 +1096,8 @@ function refreshPartyMetrics(){
    ========================================================================== */
 
 var TABLES = {
-  schedule: { name: SH.SCHEDULE, cols: 8,
-              map: function(r,i){ return [i+1, r.start, r.end, r.title, r.place, r.note, r.tags, r.visible !== false]; } },
+  schedule: { name: SH.SCHEDULE, cols: 8, textCols: [2,3],
+              map: function(r,i){ return [i+1, hhmm(r.start), hhmm(r.end), r.title, r.place, r.note, r.tags, r.visible !== false]; } },
   faq:      { name: SH.FAQ, cols: 4,
               map: function(r,i){ return [i+1, r.q, r.a, r.visible !== false]; } },
   meals:    { name: SH.MEALS, cols: 3,
@@ -1103,6 +1117,9 @@ function adminSaveRows(b){
     return String(r.title || r.q || r.meal || r.key || '').trim();
   });
   if(list.length){
+    /* the time columns are written as plain text, so 15:30 stays 15:30 rather
+       than becoming a time value the next reader has to guess at */
+    (t.textCols || []).forEach(function(c){ s.getRange(2,c,list.length,1).setNumberFormat('@'); });
     s.getRange(2,1,list.length,t.cols).setValues(list.map(t.map));
     if(b.table !== 'templates'){
       var flagCol = t.cols;
@@ -1360,7 +1377,7 @@ function setup(){
     ['Site URL','https://natalie-eric.website','Used to build each party invite link.'],
     ['Wedding Date','2027-07-11','The day itself. Drives the countdown and every calendar entry.'],
     ['Time Zone','-07:00','Vancouver runs at -07:00 in July. Calendar entries are written against this.'],
-    ['Countdown To','15:30','Clock time the front-page countdown counts down to. Blank means the first event of the day.'],
+    ['Countdown To','15:30','Clock time the front page counts down to, 24 hour. The ceremony arrival time by default.'],
     ['Venue','Riverway Clubhouse','Shown on the schedule and in calendar entries.'],
     ['Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3','Used for the map and calendar entries.'],
     ['Notify Email','natalie.eric.2027@gmail.com','Where RSVP notifications go.'],
