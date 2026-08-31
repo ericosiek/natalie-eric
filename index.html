@@ -75,7 +75,7 @@
         <div class="rule tight"><i></i></div>
         <p class="invite-meta">
           Sunday, July 11th 2027<br>
-          Riverway Clubhouse &middot; Burnaby, BC
+          Riverway Clubhouse<span class="meta-sep"> &middot; </span><br class="meta-brk">Burnaby,&nbsp;BC
         </p>
       </div>
     </div>
@@ -92,6 +92,11 @@
       </svg>
     </div>
   </div>
+
+  <!-- The room the letter will need once it is standing at full size. It is
+       held from the very first frame, so the button below never moves while
+       the invitation opens. -->
+  <div class="env-space" id="envSpace" aria-hidden="true"></div>
 
   <p class="env-cta"><button class="btn" id="openInvite">Open Invitation</button></p>
  </div>
@@ -132,7 +137,7 @@
     <div class="rule rev"><i></i></div>
     <p class="hero-meta rev">
       <b>Sunday, July 11, 2027</b><br>
-      Riverway Clubhouse &middot; Burnaby, British Columbia
+      Riverway Clubhouse &middot; Burnaby,&nbsp;British&nbsp;Columbia
     </p>
     <div class="countdown rev" id="countdown" aria-label="Countdown to the wedding"></div>
     <p class="rev" style="margin-top:2.6rem">
@@ -182,7 +187,7 @@
       <div class="venue-addr">
         <p class="eyebrow">Address</p>
         <p class="venue-name" id="mapVenue">Riverway Clubhouse</p>
-        <p class="venue-line" id="mapAddr">9001 Bill Fox Way<br>Burnaby, BC V5J 5J3</p>
+        <p class="venue-line" id="mapAddr">9001 Bill Fox Way<br>Burnaby,&nbsp;BC&nbsp;V5J&nbsp;5J3</p>
         <p class="venue-note">Nestled along the Fraser River, Riverway Clubhouse offers a romantic
           West Coast setting surrounded by lush greenery and serene views, an elegant backdrop for the
           beginning of our next chapter together.</p>
@@ -293,7 +298,7 @@
   <div class="rule tight"><i></i></div>
   <p class="foot-meta">
     Natalie &amp; Eric &middot; July 11, 2027<br>
-    Riverway Clubhouse &middot; Burnaby, BC<br>
+    Riverway Clubhouse &middot; Burnaby,&nbsp;BC<br>
     <a class="foot-mail" href="mailto:natalie.eric.2027@gmail.com">natalie.eric.2027@gmail.com</a>
   </p>
 </footer>
@@ -471,7 +476,7 @@ function renderSchedule(){
       <div class="ev-time">${fmtTime(ev.start)} &ndash; ${fmtTime(ev.end)}</div>
       <div>
         <h3 class="ev-title">${esc(ev.title)}</h3>
-        <p class="ev-place">${esc(ev.place || CONFIG.venue)} &middot; Burnaby, BC</p>
+        <p class="ev-place">${esc(ev.place || CONFIG.venue)} &middot; Burnaby,&nbsp;BC</p>
         ${ev.note ? `<p class="ev-note">${esc(ev.note)}</p>` : ""}
         <div class="ev-tags">${ev.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
       </div>
@@ -948,14 +953,10 @@ const INV = {
     this.state("opening");
     this._t1 = setTimeout(()=> this.state("peek"), 1250);
     this._t2 = setTimeout(()=> this.state("rising"), 1950);
-    /* Once the envelope has faded there is nothing left to pass through, so
-       the letter is free to open out and the scene grows to hold it. */
+    /* Nothing about the page's layout changes while any of this happens: the
+       room the letter needs was set aside before the first frame, so the
+       button below it never moves. */
     this._t3 = setTimeout(()=>{
-      const scene = document.querySelector(".env-scene");
-      if(scene) scene.style.clipPath = "none";
-      this.fitScene();
-    }, 2560);
-    this._t4 = setTimeout(()=>{
       this.state("open");
       if(btn){ btn.disabled = false; btn.textContent = "Enter our website"; btn.focus(); }
     }, 3500);
@@ -969,14 +970,6 @@ const INV = {
     if(REDUCED){ ov.classList.add("gone"); return; }
     this.state("leaving");
     setTimeout(()=>{ ov.classList.add("gone"); }, 760);
-  },
-
-  /* Once the letter is out it stands at full size, so the scene has to grow
-     to make room for it, otherwise it would sit on top of the button. */
-  fitScene(){
-    const scene = document.querySelector(".env-scene");
-    const card  = document.querySelector(".env-letter .card-invite");
-    if(scene && card) scene.style.height = card.offsetHeight + "px";
   },
 
   /* How far down, and how small, the letter has to sit to be properly inside
@@ -1001,15 +994,31 @@ const INV = {
     st.style.setProperty("--peek-shift", Math.round(sceneH * 0.07) + "px");
     st.style.setProperty("--deep-scale", scale.toFixed(4));
     st.style.setProperty("--deep-shift", Math.round(sceneH * 0.40) + "px");
-    /* pin the scene to the envelope's own height so the later growth is a
-       plain pixel-to-pixel transition rather than a jump */
+    /* the envelope keeps its own size throughout; nothing here ever grows */
     scene.style.height = Math.round(sceneH) + "px";
 
-    /* Sit the sealed envelope in the middle of the screen and leave it there.
-       The stage grows downward from this point when the letter comes out, so
-       the envelope itself never shifts. */
-    const cta = document.querySelector(".env-cta");
-    const stageH = sceneH + (cta ? cta.offsetHeight + parseFloat(getComputedStyle(cta).marginTop || 0) : 0);
+    /* How tall the letter is allowed to stand once it is out: full size, or
+       as much of it as the screen has room for. */
+    const cta  = document.querySelector(".env-cta");
+    const ctaH = cta ? cta.offsetHeight + parseFloat(getComputedStyle(cta).marginTop || 0) : 0;
+    const headroom = Math.max(240, window.innerHeight * 0.94 - ctaH);
+    const openScale = Math.min(1, headroom / cardH);
+    st.style.setProperty("--open-scale", openScale.toFixed(4));
+
+    /* Set that room aside now — a little above the envelope and the rest
+       below it — so the button sits at its final place from the first frame
+       and stays there, and the sealed envelope still sits nicely centred. */
+    const extra = Math.max(0, Math.round(cardH * openScale - sceneH));
+    const above = Math.round(extra * 0.42), below = extra - above;
+    scene.style.marginTop = above + "px";
+    const space = document.getElementById("envSpace");
+    if(space) space.style.height = below + "px";
+    /* the letter finishes that much higher than the envelope's mouth, which
+       is what makes it read as being drawn upward and out */
+    st.style.setProperty("--open-y", (-above) + "px");
+
+    /* Centre the whole thing, reserved room and all, and leave it alone. */
+    const stageH = above + sceneH + below + ctaH;
     const room = window.innerHeight - stageH;
     st.style.marginTop = Math.max(0, Math.round(room / 2) - Math.round(window.innerHeight * 0.03)) + "px";
   },
@@ -1017,10 +1026,11 @@ const INV = {
   reset(){
     const ov = $("#invitation"), btn = $("#openInvite");
     if(!ov) return;
-    clearTimeout(this._t1); clearTimeout(this._t2);
-    clearTimeout(this._t3); clearTimeout(this._t4);
+    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
     const scene = document.querySelector(".env-scene");
-    if(scene){ scene.style.height = ""; scene.style.clipPath = ""; }
+    if(scene){ scene.style.height = ""; scene.style.clipPath = ""; scene.style.marginTop = ""; }
+    const space = document.getElementById("envSpace");
+    if(space) space.style.height = "";
     const stg = this.stage();
     if(stg) stg.style.marginTop = "";
     ov.classList.remove("gone");

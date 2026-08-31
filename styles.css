@@ -120,6 +120,15 @@ p:last-child{margin-bottom:0}
   color:var(--ink-soft);margin:1.3rem 0 0;line-height:2.1;
 }
 .invite-greet{color:var(--ink-soft);font-size:1.08rem;font-style:italic;margin:.7rem 0 0;line-height:1.5}
+/* On a narrow phone the wide letter-spacing is what pushes the line over the
+   edge, so it eases off and the place name stays whole. */
+.meta-brk{display:none}
+@media (max-width:430px){
+  .invite-meta{font-size:.62rem;letter-spacing:.2em}
+  /* the venue takes a line of its own rather than leaving the dot dangling */
+  .invite-meta .meta-sep{display:none}
+  .invite-meta .meta-brk{display:inline}
+}
 
 /* ---------- the envelope --------------------------------------
    The invitation begins as a sealed envelope, because that is how
@@ -143,11 +152,13 @@ p:last-child{margin-bottom:0}
   /* Clip along the envelope's floor, so the letter can never hang out beneath
      it while it is still inside, while the flap stays free to swing up past
      the top. The 2px keeps the card's own bottom border off the seam. */
-  clip-path:inset(-1500px -1500px 2px -1500px);
-  /* the height is set in pixels from script, so it animates from one real
-     number to another; the aspect ratio is only the fallback */
-  transition:height 1.15s cubic-bezier(.22,.66,.2,1);
+  clip-path:inset(-1500px -1500px 0 -1500px);
+  transition:clip-path .8s cubic-bezier(.3,.5,.2,1);
 }
+
+/* The letter stands taller than the envelope, so the stage holds that extra
+   room from the start rather than growing into it. Nothing below it moves. */
+.env-space{width:100%;pointer-events:none}
 .env-letter,.env-shell,.env-seal{pointer-events:none}
 
 /* The envelope keeps its own proportions and sits on the floor of the scene,
@@ -281,7 +292,7 @@ p:last-child{margin-bottom:0}
 [data-state="rising"] .env-letter,
 [data-state="open"]   .env-letter,
 [data-state="leaving"] .env-letter{
-  transform:translateY(0) scale(1);
+  transform:translateY(var(--open-y,0px)) scale(var(--open-scale,1));
   transition:transform 1.05s cubic-bezier(.24,.62,.24,1) .1s;
 }
 /* The envelope holds perfectly still — it never moves — and clears away
@@ -291,6 +302,12 @@ p:last-child{margin-bottom:0}
   opacity:0;
   transition:opacity .45s var(--ease) .1s;
 }
+/* The floor of the envelope is drawn away in step with it, so the rest of the
+   letter is uncovered smoothly instead of appearing all at once. */
+[data-state="rising"] .env-scene{
+  clip-path:inset(-1500px -1500px -1500px -1500px);
+  transition:clip-path .8s cubic-bezier(.3,.5,.2,1) .12s;
+}
 /* and is taken out of the picture entirely once the letter has settled, so
    it can never sit over the button */
 [data-state="open"]    .env-shell,
@@ -298,15 +315,14 @@ p:last-child{margin-bottom:0}
 [data-state="open"]    .env-seal,
 [data-state="leaving"] .env-seal{display:none}
 
-/* the scene grows to the letter's height so the button stays clear of it */
-[data-state="rising"] .env-scene,
-[data-state="open"]   .env-scene{aspect-ratio:auto}
+/* the scene never changes size; the letter simply rises out of it into the
+   room already reserved below */
 [data-state="open"]   .env-scene,
 [data-state="leaving"] .env-scene{clip-path:none}
 
 /* ---------- state: leaving ---------- */
 [data-state="leaving"] .env-letter{
-  transform:translateY(-10px) scale(1.01);opacity:0;
+  transform:translateY(calc(var(--open-y,0px) - 10px)) scale(calc(var(--open-scale,1) * 1.01));opacity:0;
   transition:transform .8s var(--ease), opacity .65s var(--ease);
 }
 [data-state="leaving"] .env-cta{opacity:0}
