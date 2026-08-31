@@ -244,8 +244,12 @@ function mailOptions(){
 }
 function logChange(party, guest, field, from, to, by){
   try{
-    sheet(SH.LOG).appendRow([new Date(), pad(party), guest, field,
-                             String(from||''), String(to||''), by || 'guest']);
+    var s = sheet(SH.LOG), row = s.getLastRow() + 1;
+    /* columns 2-7 as text, so a value like +55 11 9... is not read as a formula */
+    s.getRange(row, 2, 1, 6).setNumberFormat('@');
+    s.getRange(row, 1, 1, 7).setValues([[new Date(), pad(party), String(guest||''),
+                                         String(field||''), String(from||''),
+                                         String(to||''), by || 'guest']]);
   }catch(e){}
 }
 
@@ -422,6 +426,7 @@ function saveRsvp(body){
     if(meal !== t.meal) changes.push([t.name,'Meal', t.meal || '(none)', meal || '(none)']);
     if(diet !== t.diet) changes.push([t.name,'Dietary notes', t.diet || '(none)', diet || '(none)']);
 
+    gs.getRange(t.row, G.ATTENDING+1, 1, 3).setNumberFormat('@');
     gs.getRange(t.row, G.ATTENDING+1).setValue(attending);
     gs.getRange(t.row, G.MEAL+1).setValue(meal);
     gs.getRange(t.row, G.DIET+1).setValue(diet);
@@ -429,8 +434,8 @@ function saveRsvp(body){
   });
 
   var ps = sheet(SH.PARTIES);
-  if(body.note)  ps.getRange(row, P.NOTE+1).setValue(String(body.note).slice(0,1000));
-  if(body.email) ps.getRange(row, P.EMAILS+1).setValue(String(body.email).slice(0,200));
+  if(body.note)  ps.getRange(row, P.NOTE+1).setNumberFormat('@').setValue(String(body.note).slice(0,1000));
+  if(body.email) ps.getRange(row, P.EMAILS+1).setNumberFormat('@').setValue(String(body.email).slice(0,200));
   ps.getRange(row, P.LASTREPLY+1).setValue(stamp);
 
   SpreadsheetApp.flush();
