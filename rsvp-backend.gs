@@ -537,6 +537,7 @@ function getParty(token){
    read and no write at all. */
 function markOpened(token){
   if(!token) return {ok:false};
+  ensureSchema();
   var row = partyRowByToken(token);
   if(!row) return {ok:false};
   var s = sheet(SH.PARTIES);
@@ -773,6 +774,7 @@ function nextPartyId(extra){
 /* adminData(light) — light skips the change log, which is by far the biggest
    part of the payload and is only ever looked at on its own tab. */
 function adminData(light){
+  ensureSchema();
   var guests = rows(SH.GUESTS).map(function(r, i){
     return { row:i+2, party:pad(r[G.PARTY]), first:String(r[G.FIRST]||''),
              last:String(r[G.LAST]||''), email:String(r[G.EMAIL]||''),
@@ -1512,6 +1514,18 @@ function setup(){
 
   refreshPartyMetrics();
   s.toast('Setup complete. Deploy a new version, then open /admin.','Ready',8);
+}
+
+/* The columns later versions of the site added. Checked cheaply wherever they
+   are about to be used, so a deploy brings its own schema with it and there is
+   no separate migration step to remember — or to forget. */
+function ensureSchema(){
+  try{
+    var g = sheet(SH.GUESTS), p = sheet(SH.PARTIES);
+    insertColumnFor(g, 'Coming To', 'Meal');
+    insertColumnFor(p, 'Thank You Sent', 'Reminder Sent');
+    insertColumnFor(p, 'Invite Opened', 'Thank You Sent');
+  }catch(e){}
 }
 
 /* Adds a column that a later version of the site needs, in the right place,
