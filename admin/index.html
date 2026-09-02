@@ -800,7 +800,22 @@ function renderEmail(){
     </div>`;
 
   const pick = () => $$('#picker input:checked').map(i => i.value);
-  const sync = () => { $('#count').textContent = pick().length + ' part' + (pick().length===1?'y':'ies') + ' selected'; };
+  /* How many addresses this send will actually touch, against what Gmail will
+     still let us send today — the number that matters while the address is
+     still building up a reputation. */
+  const addressCount = () => pick().reduce((n,id) => {
+    const p = D.parties.find(x => x.party === id) || {};
+    return n + String(p.emails||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean).length;
+  }, 0);
+  const sync = () => {
+    const n = pick().length, a = addressCount();
+    let txt = n + ' part' + (n===1?'y':'ies') + ' selected';
+    if(a) txt += ' \u00b7 ' + a + ' address' + (a===1?'':'es');
+    if(typeof D.quota === 'number') txt += ' \u00b7 ' + D.quota + ' send' + (D.quota===1?'':'s') + ' left today';
+    const el = $('#count');
+    el.textContent = txt;
+    el.style.color = (typeof D.quota === 'number' && a > D.quota) ? 'var(--rose-deep)' : '';
+  };
 
   $('#tplPick').onchange = e => {
     const t = D.templates.find(x => x.key === e.target.value);

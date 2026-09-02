@@ -802,7 +802,11 @@ function adminData(light){
                 return { key:String(r[0]||''), subject:String(r[1]||''), body:String(r[2]||'') };
                }).filter(function(x){ return x.key; }),
     sheetUrl: ss().getUrl(),
-    siteUrl:  siteUrl()
+    siteUrl:  siteUrl(),
+    /* A consumer Gmail account may send to 100 addresses a day through Apps
+       Script. Worth seeing before a wave goes out, and worth pacing against
+       while the address is still building a reputation. */
+    quota:    (function(){ try{ return MailApp.getRemainingDailyQuota(); }catch(e){ return null; } })()
   };
 }
 
