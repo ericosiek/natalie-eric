@@ -247,6 +247,15 @@ function siteUrl(){
 function sendAsAddress(){
   return String(cfg('Send As','natalie.eric.2027@gmail.com')).trim();
 }
+
+/* Where a guest email is actually addressed. With BCC Recipients on, every
+   message goes TO our own address with the party BCC-ed, which keeps guests'
+   addresses off each other's screens and leaves us a copy of everything that
+   went out. Set the Config row to FALSE to address guests directly again. */
+function bccRouting(){
+  var v = cfg('BCC Recipients','TRUE');
+  return (v === '' || v === null) ? true : isTrue(v);
+}
 function sendAs(){
   var want = sendAsAddress();
   if(!want) return '';
@@ -1182,10 +1191,16 @@ function renderEmail(subject, body, party){
      recognised on any line of its own, not only when a blank line happens to
      sit either side of it, because that is easy to lose while editing. */
   function button(label){
-    return '<p style="margin:30px 0;text-align:center">'+
+    /* The address is written out under the button as well. It helps a guest
+       whose mail client strips the styling, and a mail full of styled links
+       with no readable address is a shape spam filters distrust. */
+    return '<p style="margin:30px 0 8px;text-align:center">'+
       '<a href="'+esc(party.link)+'" style="display:inline-block;background:#9B5F57;color:#ffffff;'+
       'padding:15px 34px;text-decoration:none;letter-spacing:3px;font-size:11px;'+
-      'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">'+esc(label.trim())+'</a></p>';
+      'text-transform:uppercase;font-family:Helvetica,Arial,sans-serif">'+esc(label.trim())+'</a></p>'+
+      '<p style="margin:0 0 26px;text-align:center;font-size:13px;line-height:1.6;color:#7C6862;'+
+      'font-family:Helvetica,Arial,sans-serif">or open <a href="'+esc(party.link)+'" '+
+      'style="color:#9B5F57">'+esc(party.link)+'</a></p>';
   }
   function para(lines){
     if(!lines.length) return '';
@@ -1259,7 +1274,17 @@ function adminSend(b){
     try{
       var opts = mailOptions();
       opts.htmlBody = renderEmail(b.subject, b.body, party);
-      GmailApp.sendEmail(party.emails.join(','),
+
+      /* One message per party either way, so the names and the link stay that
+         party's own. Only the envelope changes. */
+      var house = sendAsAddress();
+      var addressTo = party.emails.join(',');
+      if(bccRouting() && house){
+        opts.bcc  = party.emails.join(',');
+        addressTo = house;
+      }
+
+      GmailApp.sendEmail(addressTo,
                          fillTokens(b.subject, party),
                          plainFallback(b.body, party),
                          opts);
@@ -1282,7 +1307,9 @@ function adminSend(b){
         logChange(id, '', 'Email sent', String(b.subject).slice(0,80), party.emails.join(', '), 'admin');
       }
       sent.push(party.label);
-      Utilities.sleep(300);
+      /* a beat between sends: a hundred near-identical messages fired off in
+         one breath is exactly the shape a bulk filter looks for */
+      Utilities.sleep(1500);
     }catch(err){
       failed.push(party.label + ' (' + msg(err) + ')');
     }
@@ -1363,7 +1390,8 @@ function setup(){
     ['Venue Address','9001 Bill Fox Way, Burnaby, BC V5J 5J3','Used for the map and calendar entries.'],
     ['Notify Email','natalie.eric.2027@gmail.com','Where RSVP notifications go.'],
     ['Notify On RSVP','TRUE','FALSE stops the notification emails.'],
-    ['Send As','natalie.eric.2027@gmail.com','The Gmail alias every email is sent from. Must be a verified alias on this account.']
+    ['Send As','natalie.eric.2027@gmail.com','The Gmail alias every email is sent from. Must be a verified alias on this account.'],
+    ['BCC Recipients','TRUE','TRUE sends each email to ourselves with the party BCC-ed. FALSE addresses guests directly.']
   ]);
   styleHeader(c, 3);
   [170,330,560].forEach(function(w,i){ c.setColumnWidth(i+1, w); });
