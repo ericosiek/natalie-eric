@@ -65,6 +65,7 @@ body{font-size:16px}
   font-family:var(--sans);font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;
   padding:.3rem .6rem;border-radius:999px;border:1px solid var(--line);color:var(--ink-soft);white-space:nowrap;
 }
+.a-chip.warn{background:#F6E7DA;color:#9A6428;border-color:#E4CFB6}
 .a-chip.open{border-color:#7E9C72;color:#4F6B45;background:#EEF4EB}
 .a-chip.shut{border-color:var(--rose);color:var(--rose-deep);background:var(--rose-wash)}
 .a-chip.done{border-color:var(--champagne);color:#8A6B36;background:rgba(227,210,180,.2)}
@@ -439,6 +440,8 @@ function cardHead(p){
       <span class="a-pid">${h(p.party)}</span>
       <span class="a-name">${h(p.name)}</span>
       <span class="a-chip">${gs.length} guest${gs.length===1?'':'s'}</span>
+      ${p.sent && !p.opened ? '<span class="a-chip warn">not opened</span>' : ''}
+      ${p.opened ? '<span class="a-chip">opened</span>' : ''}
       ${replied ? `<span class="a-chip done">${replied} replied &middot; ${yes} coming</span>` : ''}
       ${p.wave ? `<span class="a-chip">Wave ${h(p.wave)}</span>` : ''}
       ${p.sent ? '<span class="a-chip">Invited</span>' : '<span class="a-chip">Not invited</span>'}
@@ -537,6 +540,7 @@ function partyCard(p){
         ${p.sent ? 'Invitation sent '+fmt(p.sent)+'. ' : 'No invitation sent yet. Sending one opens their RSVP automatically. '}
         ${p.reminded ? 'Reminder sent '+fmt(p.reminded)+'. ' : ''}
         ${p.thanked ? 'Thank you email sent '+fmt(p.thanked)+'. ' : ''}
+        ${p.opened ? 'Opened their invitation '+fmt(p.opened)+'. ' : (p.sent ? 'Not opened yet. ' : '')}
         ${p.lastReply ? 'Last reply '+fmt(p.lastReply)+'.' : ''}
       </p>
     </div>
@@ -697,6 +701,8 @@ async function addParty(){
       /* only the first one springs open, or ten cards would unfold at once */
       if(k === 0) openCards.add(pid);
       await api('admin.saveParty', {party:{party:pid, name:'Party '+pid, open:false, wave:1}});
+      /* a party is never useful empty, so it starts with a row to type into */
+      await api('admin.saveGuest', {guest:{party:pid, first:'', last:''}});
       made.push(pid);
     }
     toast(made.length === 1 ? 'Party '+made[0]+' created' : made.length+' parties created');
@@ -762,6 +768,7 @@ function renderEmail(){
             <button class="btn ghost tiny" data-pick="none">None</button>
             <button class="btn ghost tiny" data-pick="uninvited">Not yet invited</button>
             <button class="btn ghost tiny" data-pick="noreply">Invited, no reply</button>
+            <button class="btn ghost tiny" data-pick="unopened">Invited, never opened</button>
             <button class="btn ghost tiny" data-pick="attending">Attending</button>
             <button class="btn ghost tiny" data-pick="declined">Declined</button>
             <button class="btn ghost tiny" data-pick="thanked">Not yet thanked</button>
@@ -842,6 +849,9 @@ function renderEmail(){
         mode === 'none'      ? false :
         mode === 'uninvited' ? !p.sent :
         mode === 'noreply'   ? (!!p.sent && !gs.some(g => g.attending)) :
+        /* sent, but the link has never been followed — the ones worth chasing
+           on another channel, because their email may not have arrived */
+        mode === 'unopened'  ? (!!p.sent && !p.opened) :
         /* anyone in the party is coming — the list for a thank-you */
         mode === 'attending' ? gs.some(g => g.attending === 'yes') :
         /* replied, and nobody in the party is coming */

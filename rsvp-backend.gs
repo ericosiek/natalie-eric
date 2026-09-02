@@ -29,8 +29,8 @@ var G = { PARTY:0, FIRST:1, LAST:2, EMAIL:3, PHONE:4, ATTENDING:5, MEAL:6,
           SCOPE:7, DIET:8, UPDATED:9, GID:10, NOTES:11 };
 var P = { PARTY:0, NAME:1, OPEN:2, TOKEN:3, LINK:4, WAVE:5, DEADLINE:6,
           INVITED:7, REPLIED:8, ATTENDING:9, EMAILS:10, NOTE:11, LASTREPLY:12,
-          SENT:13, REMINDED:14, THANKED:15, ADMIN:16 };
-var GUEST_COLS = 12, PARTY_COLS = 17;
+          SENT:13, REMINDED:14, THANKED:15, OPENED:16, ADMIN:17 };
+var GUEST_COLS = 12, PARTY_COLS = 18;
 
 /* Which parts of the day a guest is coming to. The first is the usual answer,
    so it is what a blank falls back to. */
@@ -64,6 +64,7 @@ function doGet(e){
       case 'site':   return json({ok:true, site:siteContent()});
       case 'find':   return json(findParties(p.q));
       case 'party':  return json(getParty(p.token));
+      case 'seen':   return json(markOpened(p.token));
       default:       return json({ok:false, error:'Unknown action'});
     }
   }catch(err){ return json({ok:false, error:msg(err)}); }
@@ -248,13 +249,12 @@ function sendAsAddress(){
   return String(cfg('Send As','natalie.eric.2027@gmail.com')).trim();
 }
 
-/* Where a guest email is actually addressed. With BCC Recipients on, every
-   message goes TO our own address with the party BCC-ed, which keeps guests'
-   addresses off each other's screens and leaves us a copy of everything that
-   went out. Set the Config row to FALSE to address guests directly again. */
-function bccRouting(){
-  var v = cfg('BCC Recipients','TRUE');
-  return (v === '' || v === null) ? true : isTrue(v);
+/* Addresses copied on every guest email, so we keep a copy of everything that
+   goes out. Guests see these, which is the point: a wedding email that visibly
+   comes from the couple reads as personal rather than as a mail-out. */
+function ccAddresses(){
+  return String(cfg('CC Addresses',''))
+           .split(/[,;]/).map(function(x){ return x.trim(); }).filter(String);
 }
 function sendAs(){
   var want = sendAsAddress();
@@ -529,6 +529,24 @@ function getParty(token){
    a notification.
    ========================================================================== */
 
+/* Stamped the first time a party actually opens its invitation link and the
+   page loads with their token. This is a real first-party page view, not a
+   pixel in the email: nothing is added to the message, nothing is fetched by
+   a mail client on the guest's behalf, and a mail app pre-loading images
+   cannot fake it. Written once and then left alone, so the common case is a
+   read and no write at all. */
+function markOpened(token){
+  if(!token) return {ok:false};
+  var row = partyRowByToken(token);
+  if(!row) return {ok:false};
+  var s = sheet(SH.PARTIES);
+  var cell = s.getRange(row, P.OPENED+1);
+  if(String(cell.getValue()||'').trim()) return {ok:true, already:true};
+  cell.setValue(new Date());
+  logChange(pad(s.getRange(row, P.PARTY+1).getValue()), '', 'Invitation opened', '', 'first view', 'guest');
+  return {ok:true, first:true};
+}
+
 function saveRsvp(body){
   var row = partyRowByToken(body.token);
   if(!row) return {ok:false, error:"We couldn't find that invitation link."};
@@ -774,6 +792,7 @@ function adminData(light){
              sent:      r[P.SENT]      ? new Date(r[P.SENT]).toISOString()      : '',
              reminded:  r[P.REMINDED]  ? new Date(r[P.REMINDED]).toISOString()  : '',
              thanked:   r[P.THANKED]   ? new Date(r[P.THANKED]).toISOString()   : '',
+             opened:    r[P.OPENED]    ? new Date(r[P.OPENED]).toISOString()    : '',
              admin:String(r[P.ADMIN]||'') };
   }).filter(function(p){ return p.party; });
 
@@ -1279,16 +1298,14 @@ function adminSend(b){
       var opts = mailOptions();
       opts.htmlBody = renderEmail(b.subject, b.body, party);
 
-      /* One message per party either way, so the names and the link stay that
-         party's own. Only the envelope changes. */
-      var house = sendAsAddress();
-      var addressTo = party.emails.join(',');
-      if(bccRouting() && house){
-        opts.bcc  = party.emails.join(',');
-        addressTo = house;
-      }
+      /* Addressed to the party itself, with us copied in. */
+      var cc = ccAddresses().filter(function(a){
+        /* never copy an address that is already a recipient of this one */
+        return party.emails.map(function(e){ return e.toLowerCase(); }).indexOf(a.toLowerCase()) === -1;
+      });
+      if(cc.length) opts.cc = cc.join(',');
 
-      GmailApp.sendEmail(addressTo,
+      GmailApp.sendEmail(party.emails.join(','),
                          fillTokens(b.subject, party),
                          plainFallback(b.body, party),
                          opts);
@@ -1353,14 +1370,15 @@ function setup(){
   /* ---------- Parties, with migration from the older column order ---------- */
   var p = s.getSheetByName(SH.PARTIES) || s.insertSheet(SH.PARTIES, 1);
   insertColumnFor(p, 'Thank You Sent', 'Reminder Sent');
+  insertColumnFor(p, 'Invite Opened', 'Thank You Sent');
   var pHead = ['Party','Party Name','RSVP Open','Link Code','Invite Link','Wave','RSVP Deadline',
                'Invited','Replied','Attending','Email(s)','Note From Guests','Last Reply',
-               'Invite Sent','Reminder Sent','Thank You Sent','Admin Notes'];
+               'Invite Sent','Reminder Sent','Thank You Sent','Invite Opened','Admin Notes'];
   var oldHead = p.getLastColumn() >= 6 ? String(p.getRange(1,6).getValue()).trim() : '';
   if(oldHead === 'Invited'){
     var old = p.getLastRow() > 1 ? p.getRange(2,1,p.getLastRow()-1,12).getValues() : [];
     var moved = old.filter(function(r){ return String(r[0]).trim(); }).map(function(r){
-      return [r[0], r[1], r[2], r[3], r[4], 1, '', '', '', '', r[8], r[9], r[10], r[11], '', '', ''];
+      return [r[0], r[1], r[2], r[3], r[4], 1, '', '', '', '', r[8], r[9], r[10], r[11], '', '', '', ''];
     });
     p.clear();
     if(p.getMaxColumns() < PARTY_COLS) p.insertColumnsAfter(p.getMaxColumns(), PARTY_COLS - p.getMaxColumns());
@@ -1372,7 +1390,7 @@ function setup(){
   }
   p.getRange('A2:A').setNumberFormat('@');
   styleHeader(p, PARTY_COLS);
-  [70,190,95,100,290,60,120,75,75,85,220,240,140,120,130,200]
+  [70,190,95,100,290,60,120,75,75,85,220,240,140,120,130,130,130,200]
     .forEach(function(w,i){ p.setColumnWidth(i+1, w); });
   p.setFrozenRows(1);
   var pn = Math.max(p.getLastRow()-1, 1);
@@ -1395,7 +1413,7 @@ function setup(){
     ['Notify Email','natalie.eric.2027@gmail.com','Where RSVP notifications go.'],
     ['Notify On RSVP','TRUE','FALSE stops the notification emails.'],
     ['Send As','natalie.eric.2027@gmail.com','The Gmail alias every email is sent from. Must be a verified alias on this account.'],
-    ['BCC Recipients','TRUE','TRUE sends each email to ourselves with the party BCC-ed. FALSE addresses guests directly.']
+    ['CC Addresses','natalie.eric.2027@gmail.com, ericosiek@gmail.com, natalie.wong58@gmail.com','Copied on every email to a guest, comma separated. Blank copies nobody.']
   ]);
   styleHeader(c, 3);
   [170,330,560].forEach(function(w,i){ c.setColumnWidth(i+1, w); });

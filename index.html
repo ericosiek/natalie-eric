@@ -761,17 +761,34 @@ const RSVP = {
   },
 
   /* --- boot ------------------------------------------------- */
-  async init(){
+  /* The request is fired the moment this script is parsed, well before the
+     page has finished laying out, so the wait for Apps Script overlaps with
+     the rest of the load instead of following it. */
+  begin(){
     const qs = new URLSearchParams(location.search);
-    /* A party only loads from a link the guest actually opened, or from a
-       lookup they did in this tab. It is deliberately NOT remembered across
-       visits: on a shared computer that would show one household's answers
-       to whoever opened the page next. */
     try{ localStorage.removeItem("ne_token"); }catch(e){}
     this.token = qs.get("i") || qs.get("p") || qs.get("party")
               || sessionStorage.getItem("ne_token") || null;
-    if(this.token){ try{ sessionStorage.setItem("ne_token", this.token); }catch(e){} }
+    if(!this.token) return;
+    try{ sessionStorage.setItem("ne_token", this.token); }catch(e){}
+    /* the name we showed last time, so a return visit is personal instantly */
+    try{
+      const seen = sessionStorage.getItem("ne_label_" + this.token);
+      if(seen) this.showLabel(seen);
+    }catch(e){}
+    this._first = this.get({action:"party", token:this.token}).catch(e => ({ok:false, error:String(e)}));
+  },
 
+  showLabel(label){
+    const g = $("#inviteGreet");
+    if(g && label) g.innerHTML = "request the pleasure of the company of<br><b style=\"font-style:normal\">"+esc(label)+"</b>";
+  },
+
+  /* A party only loads from a link the guest actually opened, or from a
+     lookup they did in this tab. It is deliberately NOT remembered across
+     visits: on a shared computer that would show one household's answers to
+     whoever opened the page next. begin() has already worked the token out. */
+  async init(){
     if(!this.token){ this.renderLookup(); return; }
     await this.load();
   },
@@ -779,7 +796,9 @@ const RSVP = {
   async load(){
     this.panel.innerHTML = '<div class="spinner" aria-label="Loading your invitation"></div>';
     try{
-      const res = await this.get({action:"party", token:this.token});
+      /* the request begin() already started, if it is still the same token */
+      const inflight = this._first; this._first = null;
+      const res = await (inflight || this.get({action:"party", token:this.token}));
       if(!res.ok){ this.renderLookup(res.error || "We couldn't find that invitation link."); return; }
       this.party = res.party;
       this.cfg   = res.site || res.config || {};
@@ -790,6 +809,7 @@ const RSVP = {
       if(typeof dl === "string" && dl) CONFIG.deadline = dl;
       this.applyPersonalisation();
       this.renderForm();
+      this.reportSeen();
     }catch(err){
       this.panel.innerHTML = '<div class="notice error"><strong>We couldn’t load your invitation.</strong><br>'+
         'Please check your connection and refresh the page. If it keeps happening, email us at '+
@@ -798,10 +818,22 @@ const RSVP = {
     }
   },
 
+  /* Tells the sheet this party has actually opened their invitation, once per
+     browser. Fire and forget — the guest never waits on it. */
+  reportSeen(){
+    if(!CONFIG.apiUrl || !this.token) return;
+    const key = "ne_seen_" + this.token;
+    try{ if(localStorage.getItem(key)) return; localStorage.setItem(key, "1"); }catch(e){}
+    try{
+      fetch(CONFIG.apiUrl + "?action=seen&token=" + encodeURIComponent(this.token),
+            {redirect:"follow", keepalive:true}).catch(()=>{});
+    }catch(e){}
+  },
+
   applyPersonalisation(){
     if(this.party && this.party.label){
-      const g = $("#inviteGreet");
-      if(g) g.innerHTML = "request the pleasure of the company of<br><b style=\"font-style:normal\">"+esc(this.party.label)+"</b>";
+      this.showLabel(this.party.label);
+      try{ sessionStorage.setItem("ne_label_" + this.token, this.party.label); }catch(e){}
     }
     const lede = $("#rsvpLede");
     if(lede) lede.innerHTML = deadlineSentence();
@@ -851,6 +883,31 @@ const RSVP = {
     $("#lkGo").addEventListener("click", go);
     $("#lk").addEventListener("keydown", e=>{ if(e.key==="Enter") go(); });
   },
+
+  /* Everything typed into the form is mirrored into this tab's storage as it
+     is typed. A refresh, a stray back button or a dropped connection halfway
+     through no longer costs the guest their answers. */
+  draftKey(){ return "ne_draft_" + (this.token || "x"); },
+  readDraft(){
+    try{ return JSON.parse(sessionStorage.getItem(this.draftKey()) || "{}") || {}; }
+    catch(e){ return {}; }
+  },
+  saveDraft(){
+    const d = {g:{}};
+    (this.party.guests||[]).forEach((g,i)=>{
+      const sel = document.querySelector('input[name="a'+i+'"]:checked');
+      d.g[g.id] = {
+        attending: sel ? sel.value : "",
+        meal:  ($("#m"+i)||{}).value || "",
+        scope: ($("#s"+i)||{}).value || "",
+        diet:  ($("#d"+i)||{}).value || ""
+      };
+    });
+    d.note  = ($("#note")  ||{}).value || "";
+    d.email = ($("#cemail")||{}).value || "";
+    try{ sessionStorage.setItem(this.draftKey(), JSON.stringify(d)); }catch(e){}
+  },
+  clearDraft(){ try{ sessionStorage.removeItem(this.draftKey()); }catch(e){} },
 
   renderForm(){
     const p = this.party, locked = !p.open;
@@ -915,11 +972,38 @@ const RSVP = {
       (CONFIG.apiUrl ? "" : '<p style="margin-top:1.2rem;font-size:.9rem;color:var(--ink-faint);text-align:center">Preview mode. Responses are not being saved yet.</p>')+
       this.notYouHtml();
 
-    /* prefill the two dropdowns (values set after their options exist) */
+    /* prefill the two dropdowns (values set after their options exist), then
+       lay anything half-typed from this tab back over the top */
     p.guests.forEach((g,i)=>{
       if(g.meal){  const s=$("#m"+i); if(s) s.value = g.meal; }
       const sc = $("#s"+i);
       if(sc) sc.value = g.scope || (g.attending === "yes" ? CONFIG.scopes[0] : "");
+    });
+
+    const draft = this.readDraft();
+    if(draft.g){
+      p.guests.forEach((g,i)=>{
+        const d = draft.g[g.id];
+        if(!d) return;
+        if(d.attending){
+          const r = document.getElementById((d.attending==="yes"?"y":"n")+i);
+          if(r){ r.checked = true; r.closest(".guest-row").classList.add("answered"); }
+          const blk = document.querySelector('[data-meal="'+i+'"]');
+          if(blk) blk.hidden = d.attending !== "yes";
+        }
+        if(d.meal){  const el=$("#m"+i); if(el) el.value = d.meal; }
+        if(d.scope){ const el=$("#s"+i); if(el) el.value = d.scope; }
+        if(d.diet){  const el=$("#d"+i); if(el) el.value = d.diet; }
+      });
+    }
+    if(draft.note  && $("#note"))   $("#note").value = draft.note;
+    if(draft.email && $("#cemail")) $("#cemail").value = draft.email;
+
+    /* every keystroke and every choice, kept */
+    const keep = ()=> this.saveDraft();
+    $$("#rsvpForm input, #rsvpForm select, #rsvpForm textarea").forEach(el=>{
+      el.addEventListener("input", keep);
+      el.addEventListener("change", keep);
     });
 
     /* show/hide meal block */
@@ -964,9 +1048,11 @@ const RSVP = {
     const p = this.party;
     const guests = [], missing = [];
 
+    /* Anyone left blank is simply left alone — their row on the sheet is not
+       touched, so a party can reply for one person now and the rest later. */
     p.guests.forEach((g,i)=>{
       const sel = document.querySelector('input[name="a'+i+'"]:checked');
-      if(!sel){ missing.push(g.name+": please choose accept or decline"); return; }
+      if(!sel) return;
       const attending = sel.value;
       const meal  = attending==="yes" ? ($("#m"+i)||{}).value || "" : "";
       const scope = attending==="yes" ? ($("#s"+i)||{}).value || "" : "";
@@ -977,6 +1063,12 @@ const RSVP = {
     });
 
     const err = $("#formErr");
+    if(!guests.length && !($("#note")||{}).value && !($("#cemail")||{}).value){
+      err.innerHTML = '<div class="notice error"><strong>Nothing to send yet.</strong><br>'+
+        'Answer for at least one person and we’ll save it. You can come back for the rest.</div>';
+      err.scrollIntoView({behavior:"smooth", block:"center"});
+      return;
+    }
     if(missing.length){
       err.innerHTML = '<div class="notice error"><strong>Almost there.</strong><br>'+
         missing.map(esc).join("<br>")+'</div>';
@@ -1000,6 +1092,7 @@ const RSVP = {
         return;
       }
       this.party = res.party;
+      this.clearDraft();
       this.renderThanks();
     }catch(e){
       btn.disabled=false; btn.textContent="Try again";
@@ -1252,6 +1345,9 @@ function initReveal(){
 /* ============================================================
    GO
    ============================================================ */
+/* before anything is drawn */
+RSVP.begin();
+
 document.addEventListener("DOMContentLoaded", ()=>{
   renderSchedule();
   renderFaq();
@@ -1261,7 +1357,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
   initNav();
   initReveal();
   RSVP.init();
-  loadSite();
+  /* A party link already brings the site content back with it, so asking for
+     it a second time only made the invitation wait longer. */
+  if(!RSVP.token) loadSite();
 });
 </script>
 </body>
